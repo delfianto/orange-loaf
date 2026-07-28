@@ -1,5 +1,8 @@
 mod commands;
 mod config;
+mod encoders;
+mod filters;
+mod job;
 mod probe;
 mod state;
 mod thumbnail;
@@ -24,6 +27,8 @@ pub fn run() {
             commands::set_tool_path,
             commands::probe_video,
             commands::generate_thumbnail,
+            commands::start_encode,
+            commands::preview_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

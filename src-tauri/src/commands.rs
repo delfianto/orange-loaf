@@ -1,11 +1,32 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
+use crate::encoders::x265::X265Settings;
+use crate::encoders::{EncodeContext, EncodeStep, EncoderProfile};
+use crate::filters::FilterSpec;
+use crate::job;
 use crate::probe::{self, VideoInfo};
 use crate::state::AppState;
 use crate::thumbnail;
 use crate::tools::{self, ToolStatus, detect_tool};
+
+/// Derives an output path next to the source rather than overwriting it:
+/// `movie.mp4` -> `movie-voltaic.mkv`. No naming-template system yet (M12) —
+/// this is deliberately the simplest thing that produces a distinct,
+/// predictable output path.
+fn derive_output_path(source: &str) -> Result<String, String> {
+    let path = Path::new(source);
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("source path has no file name")?;
+    let parent = path.parent().unwrap_or_else(|| Path::new(""));
+    Ok(parent
+        .join(format!("{stem}-voltaic.mkv"))
+        .display()
+        .to_string())
+}
 
 fn detect_all(state: &AppState) -> Vec<ToolStatus> {
     let config = state.config.lock().expect("config mutex poisoned");
@@ -105,4 +126,90 @@ pub fn generate_thumbnail(
     let config = state.config.lock().expect("config mutex poisoned");
     let ffmpeg = tools::ffmpeg_path(&config)?;
     thumbnail::generate_thumbnail(&ffmpeg, path, timestamp_secs)
+}
+
+/// Starts an x265 encode of `path` with the given settings/filters as a
+/// background job, returning immediately with a job id. Progress and
+/// completion/failure are streamed as `encode:event` events (see
+/// [`job::run`]) rather than returned from this command.
+///
+/// # Errors
+///
+/// Returns an error if ffmpeg isn't configured/found, or if the output path
+/// can't be derived from `path`.
+///
+/// # Panics
+///
+/// Panics if the config mutex is poisoned (i.e. a prior command panicked
+/// while holding it).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub fn start_encode(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    duration_secs: f64,
+    settings: X265Settings,
+    filters: FilterSpec,
+) -> Result<String, String> {
+    let ffmpeg = {
+        let config = state.config.lock().expect("config mutex poisoned");
+        tools::ffmpeg_path(&config)?
+    };
+    let output = derive_output_path(&path)?;
+    let ctx = EncodeContext {
+        source: path,
+        output,
+        filters,
+    };
+    let steps = settings.build_steps(&ctx);
+
+    let job_id = uuid::Uuid::new_v4().to_string();
+    let job_id_for_task = job_id.clone();
+    tauri::async_runtime::spawn(async move {
+        job::run(app, job_id_for_task, ffmpeg, steps, duration_secs).await;
+    });
+
+    Ok(job_id)
+}
+
+/// Builds the exact command the current settings would run, without
+/// executing anything — powers the live "Command Preview" section. Reuses
+/// [`X265Settings::build_steps`] directly so the preview can never drift
+/// from what `start_encode` actually runs.
+///
+/// # Errors
+///
+/// Returns an error if ffmpeg isn't configured/found, or if the output path
+/// can't be derived from `path`.
+///
+/// # Panics
+///
+/// Panics if the config mutex is poisoned (i.e. a prior command panicked
+/// while holding it).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub fn preview_command(
+    state: State<'_, AppState>,
+    path: &str,
+    settings: X265Settings,
+    filters: FilterSpec,
+) -> Result<Vec<String>, String> {
+    let ffmpeg = {
+        let config = state.config.lock().expect("config mutex poisoned");
+        tools::ffmpeg_path(&config)?
+    };
+    let output = derive_output_path(path)?;
+    let ctx = EncodeContext {
+        source: path.to_owned(),
+        output,
+        filters,
+    };
+    let steps = settings.build_steps(&ctx);
+    let EncodeStep::Argv(mut args) = steps
+        .into_iter()
+        .next()
+        .ok_or("encoder produced no steps")?;
+    args.insert(0, ffmpeg.display().to_string());
+    Ok(args)
 }

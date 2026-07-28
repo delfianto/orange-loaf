@@ -1,23 +1,28 @@
 <script lang="ts">
   import FolderOpen from "lucide-svelte/icons/folder-open";
   import Loader from "lucide-svelte/icons/loader-circle";
+  import Copy from "lucide-svelte/icons/copy";
   import { video } from "$lib/stores/video.svelte";
+  import { encode, X265_PRESETS } from "$lib/stores/encode.svelte";
   import AccordionSection from "$lib/components/AccordionSection.svelte";
 
-  const sections = [
-    {
-      id: "quality",
-      title: "Quality",
-      note: "Encoder-specific settings land here once the encode pipeline (M3) is wired up.",
-    },
+  type SectionId =
+    "quality" | "audio" | "subtitles" | "filters" | "hdr" | "command";
+  let openSection: SectionId = $state("quality");
+
+  const stubSections: { id: SectionId; title: string; note: string }[] = [
     { id: "audio", title: "Audio", note: "Coming in M7." },
     { id: "subtitles", title: "Subtitles", note: "Coming in M7." },
     { id: "filters", title: "Filters", note: "Coming in M6." },
     { id: "hdr", title: "HDR / Advanced", note: "Coming in M8." },
-    { id: "command", title: "Command Preview", note: "Coming in M3." },
-  ] as const;
+  ];
 
-  let openSection: (typeof sections)[number]["id"] = $state("quality");
+  $effect(() => {
+    const path = video.path;
+    const settings = encode.settings;
+    const filters = encode.filters;
+    void encode.refreshPreview(path, settings, filters);
+  });
 
   function sourceName(path: string): string {
     return path.split(/[\\/]/).pop() ?? path;
@@ -36,6 +41,25 @@
   function onScrub(event: Event & { currentTarget: HTMLInputElement }): void {
     void video.seekTo(Number(event.currentTarget.value));
   }
+
+  function onTuneChange(
+    event: Event & { currentTarget: HTMLSelectElement },
+  ): void {
+    encode.settings.tune = event.currentTarget.value || null;
+  }
+
+  function onConvertClick(): void {
+    if (!video.path || !video.info || encode.status?.state === "running") {
+      return;
+    }
+    void encode.start(video.path, video.info.durationSecs);
+  }
+
+  function copyCommand(): void {
+    void navigator.clipboard.writeText(encode.commandPreview.join(" "));
+  }
+
+  const isRunning = $derived(encode.status?.state === "running");
 </script>
 
 <div class="flex h-full flex-col">
@@ -83,13 +107,46 @@
       <button
         type="button"
         class="btn btn-primary btn-sm"
-        disabled={!video.path}>Convert</button
+        disabled={!video.path || isRunning}
+        onclick={onConvertClick}
       >
+        {isRunning ? "Encoding…" : "Convert"}
+      </button>
     </div>
   </header>
 
   {#if video.error}
     <div class="alert alert-error mx-6 mt-4 text-sm">{video.error}</div>
+  {/if}
+
+  {#if encode.status}
+    <div class="border-hairline border-b px-6 py-3">
+      {#if encode.status.state === "running"}
+        <div class="flex items-center gap-3">
+          <progress
+            class="progress progress-primary flex-1"
+            value={encode.progress?.percent ?? 0}
+            max="100"
+          ></progress>
+          <span
+            class="text-base-content/50 w-40 shrink-0 text-right font-mono text-xs"
+          >
+            {encode.progress?.percent != null
+              ? `${encode.progress.percent.toFixed(0)}%`
+              : "starting…"}
+            {#if encode.progress?.speed != null}
+              · {encode.progress.speed.toFixed(1)}x
+            {/if}
+          </span>
+        </div>
+      {:else if encode.status.state === "completed"}
+        <p class="text-success text-sm">Encode complete.</p>
+      {:else if encode.status.state === "failed"}
+        <p class="text-error whitespace-pre-wrap font-mono text-xs">
+          {encode.status.message}
+        </p>
+      {/if}
+    </div>
   {/if}
 
   <div class="grid flex-1 grid-cols-[3fr_2fr] gap-6 overflow-y-auto p-6">
@@ -142,7 +199,56 @@
     </div>
 
     <div class="min-w-0">
-      {#each sections as section (section.id)}
+      <AccordionSection
+        title="Quality"
+        open={openSection === "quality"}
+        onToggle={() => (openSection = "quality")}
+      >
+        <div class="grid grid-cols-2 gap-x-4 gap-y-3">
+          <label class="form-control">
+            <span class="text-base-content/50 mb-1 text-xs">Preset</span>
+            <select
+              class="select select-sm"
+              bind:value={encode.settings.preset}
+            >
+              {#each X265_PRESETS as preset (preset)}
+                <option value={preset}>{preset}</option>
+              {/each}
+            </select>
+          </label>
+
+          <label class="form-control">
+            <span class="text-base-content/50 mb-1 text-xs">Tune</span>
+            <select
+              class="select select-sm"
+              value={encode.settings.tune ?? ""}
+              onchange={onTuneChange}
+            >
+              <option value="">Default</option>
+              <option value="grain">Grain</option>
+              <option value="animation">Animation</option>
+              <option value="fastdecode">Fast Decode</option>
+              <option value="zerolatency">Zero Latency</option>
+            </select>
+          </label>
+
+          <label class="form-control col-span-2">
+            <span class="text-base-content/50 mb-1 text-xs"
+              >CRF <span class="font-mono">{encode.settings.crf}</span></span
+            >
+            <input
+              type="range"
+              min="0"
+              max="51"
+              step="1"
+              bind:value={encode.settings.crf}
+              class="range range-primary range-xs"
+            />
+          </label>
+        </div>
+      </AccordionSection>
+
+      {#each stubSections as section (section.id)}
         <AccordionSection
           title={section.title}
           open={openSection === section.id}
@@ -151,6 +257,35 @@
           <p class="text-base-content/50 text-sm">{section.note}</p>
         </AccordionSection>
       {/each}
+
+      <AccordionSection
+        title="Command Preview"
+        open={openSection === "command"}
+        onToggle={() => (openSection = "command")}
+      >
+        {#if encode.commandPreview.length > 0}
+          <div
+            class="bg-base-100 border-hairline relative rounded-lg border p-3"
+          >
+            <button
+              type="button"
+              class="btn btn-ghost btn-xs absolute top-2 right-2"
+              onclick={copyCommand}
+              aria-label="Copy command"
+            >
+              <Copy class="h-3.5 w-3.5" />
+            </button>
+            <pre
+              class="font-mono text-xs break-all whitespace-pre-wrap">{encode.commandPreview.join(
+                " ",
+              )}</pre>
+          </div>
+        {:else}
+          <p class="text-base-content/50 text-sm">
+            Choose a source to see the command that will run.
+          </p>
+        {/if}
+      </AccordionSection>
     </div>
   </div>
 </div>
