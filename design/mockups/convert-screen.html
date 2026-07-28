@@ -1,0 +1,374 @@
+<!DOCTYPE html><html lang="en"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voltaic — Convert</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://code.iconify.design/iconify-icon/1.0.7/iconify-icon.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-app: #08090a;
+      --bg-sidebar: #0c0d0f;
+      --bg-content: #0b0c0e;
+      --bg-raised: #111318;
+      --border-hairline: rgba(255, 255, 255, 0.07);
+      --text-primary: #f4f5f8;
+      --text-secondary: #b9bdc6;
+      --text-muted: #7d828c;
+      --accent: #5e6ad2;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-app);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .border-hairline {
+      border-color: var(--border-hairline);
+    }
+    .bg-sidebar {
+      background-color: var(--bg-sidebar);
+    }
+    .bg-content {
+      background-color: var(--bg-content);
+    }
+    .bg-raised {
+      background-color: var(--bg-raised);
+    }
+    .text-accent {
+      color: var(--accent);
+    }
+    .bg-accent {
+      background-color: var(--accent);
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-hairline);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="flex h-screen w-full bg-[#08090a] overflow-hidden" data-sd-id="1">
+    <!-- Sidebar / Rail -->
+    <aside class="w-[72px] flex flex-col items-center py-6 bg-sidebar border-r border-hairline z-50" data-sd-id="2">
+      <div class="mb-10" data-sd-id="3">
+        <div class="w-10 h-10 bg-accent rounded-lg flex items-center justify-center" data-sd-id="4">
+          <iconify-icon icon="lucide:zap" class="text-white text-xl"></iconify-icon>
+        </div>
+      </div>
+      
+      <nav class="flex flex-col gap-3 w-full items-center" data-sd-id="5">
+        <a id="nav-convert" href="#" class="w-12 h-12 flex items-center justify-center rounded-xl bg-accent/10 text-accent transition-colors" data-sd-id="6">
+          <iconify-icon icon="lucide:refresh-cw" class="text-xl"></iconify-icon>
+        </a>
+        <a id="nav-queue" href="#" class="relative w-12 h-12 flex items-center justify-center rounded-xl text-text-muted hover:text-white transition-colors" data-sd-id="7">
+          <iconify-icon icon="lucide:list-ordered" class="text-xl"></iconify-icon>
+          <span class="absolute top-2 right-2 w-4 h-4 bg-[#f2c94c] text-[10px] text-black font-bold flex items-center justify-center rounded-full" data-sd-id="8">3</span>
+        </a>
+        <a id="nav-history" href="#" class="w-12 h-12 flex items-center justify-center rounded-xl text-text-muted hover:text-white transition-colors" data-sd-id="9">
+          <iconify-icon icon="lucide:history" class="text-xl"></iconify-icon>
+        </a>
+        <a id="nav-profiles" href="#" class="w-12 h-12 flex items-center justify-center rounded-xl text-text-muted hover:text-white transition-colors" data-sd-id="10">
+          <iconify-icon icon="lucide:layers" class="text-xl"></iconify-icon>
+        </a>
+      </nav>
+
+      <div class="mt-auto" data-sd-id="11">
+        <a id="nav-settings" href="#" class="w-12 h-12 flex items-center justify-center rounded-xl text-text-muted hover:text-white transition-colors" data-sd-id="12">
+          <iconify-icon icon="lucide:settings" class="text-xl"></iconify-icon>
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col min-w-0" data-sd-id="13">
+      
+      <!-- Header Bar -->
+      <header class="h-14 flex items-center justify-between px-6 bg-content border-b border-hairline" data-sd-id="14">
+        <div class="flex items-center gap-4" data-sd-id="15">
+          <div class="flex items-center gap-3" data-sd-id="16">
+            <iconify-icon icon="lucide:video" class="text-[#7d828c] text-lg"></iconify-icon>
+            <div class="flex flex-col" data-sd-id="17">
+              <span class="text-sm font-medium text-[#f4f5f8] leading-tight" data-sd-id="18">Big_Buck_Bunny_4K_HDR.mkv</span>
+              <span class="text-[11px] text-[#7d828c] uppercase tracking-wider" data-sd-id="19">Source File • /Users/media/videos</span>
+            </div>
+          </div>
+          <button id="btn-change-source" class="ml-2 px-3 py-1.5 rounded-md border border-hairline hover:bg-white/5 transition-colors text-xs text-[#b9bdc6] font-medium" data-sd-id="20">
+            Change Source
+          </button>
+        </div>
+
+        <div class="flex items-center gap-3" data-sd-id="21">
+          <div class="flex items-center gap-2" data-sd-id="22">
+            <select class="bg-[#111318] border border-hairline rounded-md px-3 py-1.5 text-xs text-[#f4f5f8] focus:outline-none focus:ring-1 focus:ring-accent min-w-[140px]" data-sd-id="23">
+              <option data-sd-id="24">HEVC (x265)</option>
+              <option data-sd-id="25">AV1 (SVT-AV1)</option>
+              <option data-sd-id="26">H.264 (x264)</option>
+            </select>
+            <select class="bg-[#111318] border border-hairline rounded-md px-3 py-1.5 text-xs text-[#f4f5f8] focus:outline-none focus:ring-1 focus:ring-accent min-w-[140px]" data-sd-id="27">
+              <option data-sd-id="28">Standard Profile</option>
+              <option data-sd-id="29">HQ 10-bit Profile</option>
+              <option data-sd-id="30">Fast Transcode</option>
+            </select>
+          </div>
+          <div class="h-6 w-px bg-hairline mx-2" data-sd-id="31"></div>
+          <div class="flex items-center gap-2" data-sd-id="32">
+            <button id="btn-add-queue" class="px-4 py-1.5 rounded-md border border-hairline hover:bg-white/5 transition-colors text-xs text-[#f4f5f8] font-medium" data-sd-id="33">
+              Add to Queue
+            </button>
+            <button id="btn-convert-primary" class="px-6 py-1.5 rounded-md bg-accent hover:bg-[#4d57c2] transition-colors text-xs text-white font-semibold shadow-sm shadow-accent/20" data-sd-id="34">
+              Convert
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Workspace -->
+      <div class="flex-1 overflow-y-auto p-6 flex gap-6" data-sd-id="35">
+        
+        <!-- Left Column: Preview -->
+        <div class="w-[60%] flex flex-col gap-6" data-sd-id="36">
+          <!-- Preview Card -->
+          <div class="bg-raised border border-hairline rounded-lg overflow-hidden flex flex-col" data-sd-id="37">
+            <div class="aspect-video bg-black relative flex items-center justify-center group cursor-pointer" data-sd-id="38">
+              <img src="https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&amp;fit=crop&amp;q=80&amp;w=1200" alt="Video Frame" class="w-full h-full object-cover opacity-60" data-sd-id="39">
+              <div class="absolute inset-0 flex items-center justify-center" data-sd-id="40">
+                <div class="w-16 h-16 rounded-full bg-black/40 backdrop-blur-sm border border-white/20 flex items-center justify-center group-hover:scale-110 transition-transform" data-sd-id="41">
+                  <iconify-icon icon="lucide:play" class="text-white text-2xl ml-1"></iconify-icon>
+                </div>
+              </div>
+              <!-- Overlay HUD -->
+              <div class="absolute top-4 left-4 flex gap-2" data-sd-id="42">
+                <span class="px-2 py-1 rounded-sm bg-black/60 backdrop-blur text-[10px] font-mono text-white/80" data-sd-id="43">4096 × 2160</span>
+                <span class="px-2 py-1 rounded-sm bg-black/60 backdrop-blur text-[10px] font-mono text-white/80" data-sd-id="44">HDR10</span>
+              </div>
+            </div>
+            <!-- Scrubber Area -->
+            <div class="p-4 flex flex-col gap-3" data-sd-id="45">
+              <div class="flex items-center gap-4" data-sd-id="46">
+                <div class="flex-1 h-1.5 bg-white/5 rounded-full relative" data-sd-id="47">
+                  <div class="absolute left-0 top-0 h-full w-1/4 bg-accent rounded-full" data-sd-id="48"></div>
+                  <div class="absolute left-[25%] top-1/2 -translate-y-1/2 w-4 h-4 bg-accent border-2 border-[#111318] rounded-full shadow-lg" data-sd-id="49"></div>
+                </div>
+                <span class="text-xs font-mono text-[#7d828c]" data-sd-id="50">0:00:14 / 0:10:32</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mini-Controls Row -->
+          <div class="grid grid-cols-4 gap-4" data-sd-id="51">
+            <div class="flex flex-col gap-2" data-sd-id="52">
+              <label class="text-[11px] font-medium text-[#7d828c] uppercase tracking-wider" data-sd-id="53">Resolution</label>
+              <div class="flex gap-1" data-sd-id="54">
+                <select class="flex-1 bg-raised border border-hairline rounded-md px-2 py-1.5 text-xs text-[#f4f5f8] focus:outline-none" data-sd-id="55">
+                  <option data-sd-id="56">Auto (4K)</option>
+                  <option data-sd-id="57">1080p</option>
+                  <option data-sd-id="58">720p</option>
+                </select>
+                <input type="text" placeholder="Custom" class="w-20 bg-raised border border-hairline rounded-md px-2 py-1.5 text-xs text-[#f4f5f8] placeholder:text-white/10 focus:outline-none" data-sd-id="59">
+              </div>
+            </div>
+            <div class="flex flex-col gap-2" data-sd-id="60">
+              <label class="text-[11px] font-medium text-[#7d828c] uppercase tracking-wider" data-sd-id="61">Rotate</label>
+              <div class="flex border border-hairline rounded-md overflow-hidden bg-raised" data-sd-id="62">
+                <button class="flex-1 h-8 flex items-center justify-center hover:bg-white/5 border-r border-hairline" data-sd-id="63">
+                  <iconify-icon icon="lucide:rotate-ccw" class="text-xs"></iconify-icon>
+                </button>
+                <div class="flex-[1.5] flex items-center justify-center text-[10px] font-medium border-r border-hairline" data-sd-id="64">0°</div>
+                <button class="flex-1 h-8 flex items-center justify-center hover:bg-white/5" data-sd-id="65">
+                  <iconify-icon icon="lucide:rotate-cw" class="text-xs"></iconify-icon>
+                </button>
+              </div>
+            </div>
+            <div class="flex flex-col gap-2" data-sd-id="66">
+              <label class="text-[11px] font-medium text-[#7d828c] uppercase tracking-wider" data-sd-id="67">Flip</label>
+              <select class="bg-raised border border-hairline rounded-md px-2 py-1.5 text-xs text-[#f4f5f8] focus:outline-none h-8" data-sd-id="68">
+                <option data-sd-id="69">No Flip</option>
+                <option data-sd-id="70">Horizontal</option>
+                <option data-sd-id="71">Vertical</option>
+              </select>
+            </div>
+            <div class="flex flex-col gap-2" data-sd-id="72">
+              <label class="text-[11px] font-medium text-[#7d828c] uppercase tracking-wider" data-sd-id="73">Tool</label>
+              <button class="h-8 border border-hairline rounded-md px-3 text-xs text-[#b9bdc6] hover:bg-white/5 flex items-center justify-center gap-2" data-sd-id="74">
+                <iconify-icon icon="lucide:crop" class="text-sm"></iconify-icon>
+                <span data-sd-id="75">Open Crop Tool</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Transcode Settings -->
+        <div class="w-[40%] flex flex-col gap-px bg-hairline border border-hairline rounded-lg overflow-hidden" data-sd-id="76">
+          
+          <!-- Quality Section (Expanded) -->
+          <div class="bg-raised" data-sd-id="77">
+            <button class="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 transition-colors" data-sd-id="78">
+              <div class="flex items-center gap-3" data-sd-id="79">
+                <iconify-icon icon="lucide:chevron-down" class="text-xs text-[#7d828c]"></iconify-icon>
+                <span class="font-semibold text-sm" data-sd-id="80">Quality</span>
+              </div>
+              <div class="flex items-center gap-2" data-sd-id="81">
+                <span class="text-[10px] bg-accent/10 text-accent px-2 py-0.5 rounded border border-accent/20 font-medium uppercase tracking-tight" data-sd-id="82">10-bit</span>
+                <span class="text-[10px] bg-white/5 text-[#7d828c] px-2 py-0.5 rounded border border-hairline font-medium uppercase tracking-tight" data-sd-id="83">2-Pass</span>
+              </div>
+            </button>
+            <div class="px-5 pb-6 flex flex-col gap-5" data-sd-id="84">
+              <div class="grid grid-cols-2 gap-4" data-sd-id="85">
+                <div class="flex flex-col gap-2" data-sd-id="86">
+                  <label class="text-[10px] font-semibold text-[#7d828c] uppercase tracking-wider" data-sd-id="87">Preset</label>
+                  <select class="bg-[#0b0c0e] border border-hairline rounded-md px-3 py-2 text-xs text-[#f4f5f8] focus:outline-none" data-sd-id="88">
+                    <option data-sd-id="89">Medium</option>
+                    <option data-sd-id="90">Slower</option>
+                    <option data-sd-id="91">Fast</option>
+                  </select>
+                </div>
+                <div class="flex flex-col gap-2" data-sd-id="92">
+                  <label class="text-[10px] font-semibold text-[#7d828c] uppercase tracking-wider" data-sd-id="93">Tune</label>
+                  <select class="bg-[#0b0c0e] border border-hairline rounded-md px-3 py-2 text-xs text-[#f4f5f8] focus:outline-none" data-sd-id="94">
+                    <option data-sd-id="95">Default</option>
+                    <option data-sd-id="96">Film</option>
+                    <option data-sd-id="97">Animation</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div class="flex flex-col gap-2" data-sd-id="98">
+                <label class="text-[10px] font-semibold text-[#7d828c] uppercase tracking-wider" data-sd-id="99">Bit Depth / Pixel Format</label>
+                <select class="bg-[#0b0c0e] border border-hairline rounded-md px-3 py-2 text-xs text-[#f4f5f8] focus:outline-none" data-sd-id="100">
+                  <option data-sd-id="101">10-bit: yuv420p10le</option>
+                  <option data-sd-id="102">8-bit: yuv420p</option>
+                </select>
+              </div>
+
+              <div class="h-px bg-hairline my-1" data-sd-id="103"></div>
+
+              <div class="flex flex-col gap-4" data-sd-id="104">
+                <div class="flex items-center justify-between" data-sd-id="105">
+                  <div class="flex p-0.5 bg-[#0b0c0e] border border-hairline rounded-lg" data-sd-id="106">
+                    <button class="px-4 py-1.5 rounded-md text-[11px] font-semibold bg-accent text-white" data-sd-id="107">CRF</button>
+                    <button class="px-4 py-1.5 rounded-md text-[11px] font-semibold text-[#7d828c] hover:text-[#b9bdc6]" data-sd-id="108">Bitrate</button>
+                  </div>
+                  <div class="flex items-center gap-3" data-sd-id="109">
+                     <div class="flex items-center border border-hairline rounded-md bg-[#0b0c0e] overflow-hidden" data-sd-id="110">
+                        <button class="px-2 h-8 hover:bg-white/5 border-r border-hairline" data-sd-id="111"><iconify-icon icon="lucide:minus" class="text-[10px]"></iconify-icon></button>
+                        <div class="px-4 flex items-center gap-2" data-sd-id="112">
+                          <span class="text-xs font-mono font-medium" data-sd-id="113">22</span>
+                          <span class="text-[10px] text-[#7d828c]" data-sd-id="114">(1080p)</span>
+                        </div>
+                        <button class="px-2 h-8 hover:bg-white/5 border-l border-hairline" data-sd-id="115"><iconify-icon icon="lucide:plus" class="text-[10px]"></iconify-icon></button>
+                     </div>
+                  </div>
+                </div>
+                
+                <div class="flex items-center justify-between" data-sd-id="116">
+                  <div class="flex items-center gap-3" data-sd-id="117">
+                    <span class="text-xs font-medium text-[#b9bdc6]" data-sd-id="118">Two-pass Encoding</span>
+                    <div class="w-8 h-4 rounded-full bg-white/5 border border-hairline relative cursor-pointer" data-sd-id="119">
+                      <div class="absolute left-0.5 top-0.5 w-2.5 h-2.5 bg-[#7d828c] rounded-full" data-sd-id="120"></div>
+                    </div>
+                  </div>
+                  <span class="text-[10px] text-[#7d828c]" data-sd-id="121">Requires longer encode time</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Audio Section (Collapsed) -->
+          <div class="bg-raised" data-sd-id="122">
+            <button class="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 transition-colors group" data-sd-id="123">
+              <div class="flex items-center gap-3" data-sd-id="124">
+                <iconify-icon icon="lucide:chevron-right" class="text-xs text-[#7d828c]"></iconify-icon>
+                <span class="font-semibold text-sm" data-sd-id="125">Audio</span>
+                <span class="text-[11px] text-[#7d828c] font-normal opacity-0 group-hover:opacity-100 transition-opacity ml-2" data-sd-id="126">2 tracks · AAC 192k, copy</span>
+              </div>
+            </button>
+          </div>
+
+          <!-- Subtitles Section (Collapsed) -->
+          <div class="bg-raised" data-sd-id="127">
+            <button class="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 transition-colors group" data-sd-id="128">
+              <div class="flex items-center gap-3" data-sd-id="129">
+                <iconify-icon icon="lucide:chevron-right" class="text-xs text-[#7d828c]"></iconify-icon>
+                <span class="font-semibold text-sm" data-sd-id="130">Subtitles</span>
+                <span class="text-[11px] text-[#7d828c] font-normal opacity-0 group-hover:opacity-100 transition-opacity ml-2" data-sd-id="131">1 track · copy (eng)</span>
+              </div>
+            </button>
+          </div>
+
+          <!-- Filters Section (Collapsed) -->
+          <div class="bg-raised" data-sd-id="132">
+            <button class="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 transition-colors group" data-sd-id="133">
+              <div class="flex items-center gap-3" data-sd-id="134">
+                <iconify-icon icon="lucide:chevron-right" class="text-xs text-[#7d828c]"></iconify-icon>
+                <span class="font-semibold text-sm" data-sd-id="135">Filters</span>
+                <span class="text-[11px] text-[#7d828c] font-normal opacity-0 group-hover:opacity-100 transition-opacity ml-2" data-sd-id="136">No crop · No deinterlace</span>
+              </div>
+            </button>
+          </div>
+
+          <!-- HDR / Advanced (Collapsed) -->
+          <div class="bg-raised" data-sd-id="137">
+            <button class="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 transition-colors" data-sd-id="138">
+              <div class="flex items-center gap-3" data-sd-id="139">
+                <iconify-icon icon="lucide:chevron-right" class="text-xs text-[#7d828c]"></iconify-icon>
+                <span class="font-semibold text-sm" data-sd-id="140">HDR / Advanced</span>
+                <span class="text-[11px] text-[#7d828c] font-normal ml-2" data-sd-id="141">HDR10 signaling on</span>
+              </div>
+              <div class="flex items-center gap-2" data-sd-id="142">
+                <span class="text-[10px] bg-amber-500/10 text-amber-500 px-2 py-0.5 rounded border border-amber-500/20 font-medium uppercase tracking-tight" data-sd-id="143">HDR10</span>
+              </div>
+            </button>
+          </div>
+
+          <!-- Command Preview (Collapsed) -->
+          <div class="bg-raised" data-sd-id="144">
+            <button class="w-full flex items-center justify-between px-5 py-4 hover:bg-white/5 transition-colors" data-sd-id="145">
+              <div class="flex items-center gap-3" data-sd-id="146">
+                <iconify-icon icon="lucide:chevron-right" class="text-xs text-[#7d828c]"></iconify-icon>
+                <span class="font-semibold text-sm" data-sd-id="147">Command Preview</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Footer Status Bar -->
+      <footer class="h-8 px-4 flex items-center justify-between bg-sidebar border-t border-hairline text-[10px] text-[#7d828c] uppercase tracking-widest font-medium" data-sd-id="148">
+        <div class="flex items-center gap-6" data-sd-id="149">
+          <span class="flex items-center gap-2" data-sd-id="150">
+            <iconify-icon icon="lucide:cpu" class="text-xs"></iconify-icon>
+            FFmpeg 6.1 (Latest)
+          </span>
+          <span class="flex items-center gap-2" data-sd-id="151">
+            <iconify-icon icon="lucide:hard-drive" class="text-xs"></iconify-icon>
+            NVENC Available
+          </span>
+        </div>
+        <div class="flex items-center gap-4" data-sd-id="152">
+          <span data-sd-id="153">Queue: 3 Pending</span>
+          <span class="text-accent" data-sd-id="154">Build 2.0.0-Beta</span>
+        </div>
+      </footer>
+
+    </main>
+  </div>
+
+</body></html>

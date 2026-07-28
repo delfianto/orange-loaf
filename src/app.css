@@ -1,0 +1,69 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: false;
+}
+
+/*
+ * Voltaic theme — a direct CSS translation of the tokens in design/design-system.md.
+ * Dark-only by design (see notes/plan.md §8): no light variant is defined.
+ */
+@plugin "daisyui/theme" {
+  name: "voltaic";
+  default: true;
+  prefersdark: true;
+  color-scheme: dark;
+
+  /* base-100/200/300 = app / sidebar-rail / raised-surface elevation steps */
+  --color-base-100: #08090a;
+  --color-base-200: #0c0d0f;
+  --color-base-300: #111318;
+  --color-base-content: #f4f5f8;
+
+  /* Single rationed accent — used only for primary actions, active nav, focus rings, progress fill */
+  --color-primary: #5e6ad2;
+  --color-primary-content: #f4f5f8;
+
+  /* Secondary/accent/neutral deliberately desaturated so nothing competes with the one accent hue */
+  --color-secondary: #7d828c;
+  --color-secondary-content: #08090a;
+  --color-accent: #5e6ad2;
+  --color-accent-content: #f4f5f8;
+  --color-neutral: #111318;
+  --color-neutral-content: #b9bdc6;
+
+  /* Semantic status colors — confined to icons/rings/pills/progress, never full-surface fills */
+  --color-info: #5e6ad2;
+  --color-info-content: #f4f5f8;
+  --color-success: #4ade80;
+  --color-success-content: #08090a;
+  --color-warning: #f2c94c;
+  --color-warning-content: #08090a;
+  --color-error: #eb5757;
+  --color-error-content: #f4f5f8;
+
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+}
+
+/* Hairline dividers per the design system: rgba(255,255,255,0.07), never a drop shadow. */
+@theme {
+  --color-hairline: rgba(255, 255, 255, 0.07);
+}
+
+body {
+  font-family: var(--font-sans);
+}
