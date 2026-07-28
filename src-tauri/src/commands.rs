@@ -6,7 +6,7 @@ use crate::encoders::tracks::{AudioTrackSelection, SubtitleTrackSelection};
 use crate::encoders::{EncodeContext, EncodeStep, EncoderKind, EncoderProfile, Trim};
 use crate::filters::FilterSpec;
 use crate::job;
-use crate::probe::{self, VideoInfo};
+use crate::probe::{self, Hdr10Metadata, VideoInfo};
 use crate::state::AppState;
 use crate::thumbnail;
 use crate::tools::{self, ToolStatus, detect_tool};
@@ -158,6 +158,7 @@ pub fn start_encode(
     trim: Trim,
     audio_tracks: Vec<AudioTrackSelection>,
     subtitle_tracks: Vec<SubtitleTrackSelection>,
+    hdr10: Option<Hdr10Metadata>,
 ) -> Result<String, String> {
     let ffmpeg = {
         let config = state.config.lock().expect("config mutex poisoned");
@@ -169,6 +170,7 @@ pub fn start_encode(
         filters,
         audio_tracks,
         subtitle_tracks,
+        hdr10,
         ..EncodeContext::new(path, output)
     }
     .with_trim(trim);
@@ -206,7 +208,8 @@ fn trimmed_duration(source_duration_secs: f64, trim: &Trim) -> f64 {
 ///
 /// Panics if the config mutex is poisoned (i.e. a prior command panicked
 /// while holding it).
-#[allow(clippy::needless_pass_by_value)]
+// See `start_encode`'s equivalent comment — same reasoning applies here.
+#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
 #[tauri::command]
 pub fn preview_command(
     state: State<'_, AppState>,
@@ -216,6 +219,7 @@ pub fn preview_command(
     trim: Trim,
     audio_tracks: Vec<AudioTrackSelection>,
     subtitle_tracks: Vec<SubtitleTrackSelection>,
+    hdr10: Option<Hdr10Metadata>,
 ) -> Result<Vec<String>, String> {
     let ffmpeg = {
         let config = state.config.lock().expect("config mutex poisoned");
@@ -226,6 +230,7 @@ pub fn preview_command(
         filters,
         audio_tracks,
         subtitle_tracks,
+        hdr10,
         ..EncodeContext::new(path, output)
     }
     .with_trim(trim);

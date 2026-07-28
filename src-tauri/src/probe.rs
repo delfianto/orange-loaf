@@ -17,9 +17,39 @@ pub struct VideoInfo {
     pub pix_fmt: Option<String>,
     pub bit_depth: u8,
     pub frame_rate: Option<f64>,
-    pub hdr10: bool,
+    pub hdr10: Option<Hdr10Metadata>,
     pub audio_tracks: Vec<AudioTrack>,
     pub subtitle_tracks: Vec<SubtitleTrack>,
+}
+
+/// HDR10 static metadata, in the plain units the source's mastering-display
+/// SEI/OBU actually describes — chromaticity as CIE 1931 xy (0..1), luminance
+/// in nits — rather than any one codec's own fixed-point wire scale. Each
+/// target encoder's own formatter (`encoders::hdr`) converts from here into
+/// whatever scale *that* codec's HDR string wants; ffprobe's reported
+/// fractions are already codec-native scaled integers (HEVC: /50000
+/// chromaticity, /10000 luminance; AV1: /65536 chromaticity, its own
+/// luminance scale — verified empirically, not assumed identical).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Hdr10Metadata {
+    pub red_x: f64,
+    pub red_y: f64,
+    pub green_x: f64,
+    pub green_y: f64,
+    pub blue_x: f64,
+    pub blue_y: f64,
+    pub white_point_x: f64,
+    pub white_point_y: f64,
+    /// Nits.
+    pub max_luminance: f64,
+    /// Nits.
+    pub min_luminance: f64,
+    /// Content light level is separate SEI/OBU data from mastering-display
+    /// and, in principle, independently present-or-absent — `None` when
+    /// this source has mastering-display metadata but no CLL.
+    pub max_content_light: Option<u32>,
+    pub max_average_light: Option<u32>,
 }
 
 /// One audio stream as reported by ffprobe. `index` is *type-relative*
@@ -90,9 +120,21 @@ struct FfprobeFormat {
     duration: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct FfprobeFrameSideData {
     side_data_type: Option<String>,
+    red_x: Option<String>,
+    red_y: Option<String>,
+    green_x: Option<String>,
+    green_y: Option<String>,
+    blue_x: Option<String>,
+    blue_y: Option<String>,
+    white_point_x: Option<String>,
+    white_point_y: Option<String>,
+    min_luminance: Option<String>,
+    max_luminance: Option<String>,
+    max_content: Option<u32>,
+    max_average: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -192,20 +234,51 @@ fn guess_bit_depth(
     8
 }
 
-/// Parses ffprobe's `"num/den"` frame-rate strings into a plain f64.
-fn parse_frame_rate(raw: &str) -> Option<f64> {
+/// Parses ffprobe's `"num/den"` fraction strings (used for both frame rate
+/// and, below, HDR10 mastering-display chromaticity/luminance) into a plain
+/// f64.
+fn parse_fraction(raw: &str) -> Option<f64> {
     let (num, den) = raw.split_once('/')?;
     let num: f64 = num.parse().ok()?;
     let den: f64 = den.parse().ok()?;
     if den == 0.0 { None } else { Some(num / den) }
 }
 
-/// Runs ffprobe's frame-level probe on the first video stream and reports
-/// whether it carries HDR10 static (mastering-display) metadata. This is a
-/// separate call from the main `-show_streams` probe because mastering-display
-/// data is exposed by ffprobe as frame side-data, not a stream-level field.
-fn detect_hdr10(ffprobe: &Path, source: &str) -> bool {
-    let Ok(output) = Command::new(ffprobe)
+/// Reads the *first* "Mastering display metadata" / "Content light level
+/// metadata" side-data entries out of a probed frame's side-data list —
+/// ffprobe exposes both as sibling entries in the same list, each present
+/// independently of the other.
+fn hdr10_from_side_data(side_data_list: &[FfprobeFrameSideData]) -> Option<Hdr10Metadata> {
+    let mastering = side_data_list
+        .iter()
+        .find(|s| s.side_data_type.as_deref() == Some("Mastering display metadata"))?;
+    let light_level = side_data_list
+        .iter()
+        .find(|s| s.side_data_type.as_deref() == Some("Content light level metadata"));
+
+    Some(Hdr10Metadata {
+        red_x: parse_fraction(mastering.red_x.as_deref()?)?,
+        red_y: parse_fraction(mastering.red_y.as_deref()?)?,
+        green_x: parse_fraction(mastering.green_x.as_deref()?)?,
+        green_y: parse_fraction(mastering.green_y.as_deref()?)?,
+        blue_x: parse_fraction(mastering.blue_x.as_deref()?)?,
+        blue_y: parse_fraction(mastering.blue_y.as_deref()?)?,
+        white_point_x: parse_fraction(mastering.white_point_x.as_deref()?)?,
+        white_point_y: parse_fraction(mastering.white_point_y.as_deref()?)?,
+        max_luminance: parse_fraction(mastering.max_luminance.as_deref()?)?,
+        min_luminance: parse_fraction(mastering.min_luminance.as_deref()?)?,
+        max_content_light: light_level.and_then(|l| l.max_content),
+        max_average_light: light_level.and_then(|l| l.max_average),
+    })
+}
+
+/// Runs ffprobe's frame-level probe on the first video stream and extracts
+/// HDR10 static (mastering-display + content-light) metadata, if present.
+/// This is a separate call from the main `-show_streams` probe because
+/// this data is exposed by ffprobe as frame side-data, not a stream-level
+/// field.
+fn extract_hdr10(ffprobe: &Path, source: &str) -> Option<Hdr10Metadata> {
+    let output = Command::new(ffprobe)
         .args([
             "-loglevel",
             "panic",
@@ -221,17 +294,12 @@ fn detect_hdr10(ffprobe: &Path, source: &str) -> bool {
             source,
         ])
         .output()
-    else {
-        return false;
-    };
-    let Ok(parsed) = serde_json::from_slice::<FfprobeFramesOutput>(&output.stdout) else {
-        return false;
-    };
-    parsed.frames.iter().any(|frame| {
-        frame.side_data_list.iter().any(|side_data| {
-            side_data.side_data_type.as_deref() == Some("Mastering display metadata")
-        })
-    })
+        .ok()?;
+    let parsed: FfprobeFramesOutput = serde_json::from_slice(&output.stdout).ok()?;
+    parsed
+        .frames
+        .iter()
+        .find_map(|frame| hdr10_from_side_data(&frame.side_data_list))
 }
 
 /// Probes a source video with ffprobe and returns the subset of its
@@ -292,8 +360,8 @@ pub fn probe_video(ffprobe: &Path, source: &str) -> Result<VideoInfo, String> {
         frame_rate: video_stream
             .r_frame_rate
             .as_deref()
-            .and_then(parse_frame_rate),
-        hdr10: detect_hdr10(ffprobe, source),
+            .and_then(parse_fraction),
+        hdr10: extract_hdr10(ffprobe, source),
         audio_tracks: audio_tracks(&parsed.streams),
         subtitle_tracks: subtitle_tracks(&parsed.streams),
     })
@@ -302,8 +370,8 @@ pub fn probe_video(ffprobe: &Path, source: &str) -> Result<VideoInfo, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        FfprobeDisposition, FfprobeStream, FfprobeTags, audio_tracks, guess_bit_depth,
-        parse_frame_rate, probe_video, subtitle_tracks,
+        FfprobeDisposition, FfprobeFrameSideData, FfprobeStream, FfprobeTags, audio_tracks,
+        guess_bit_depth, hdr10_from_side_data, parse_fraction, probe_video, subtitle_tracks,
     };
     use std::path::Path;
 
@@ -328,10 +396,87 @@ mod tests {
 
     #[test]
     fn parses_fractional_frame_rates() {
-        assert_eq!(parse_frame_rate("30000/1001"), Some(30000.0 / 1001.0));
-        assert_eq!(parse_frame_rate("25/1"), Some(25.0));
-        assert_eq!(parse_frame_rate("25/0"), None);
-        assert_eq!(parse_frame_rate("not-a-fraction"), None);
+        assert_eq!(parse_fraction("30000/1001"), Some(30000.0 / 1001.0));
+        assert_eq!(parse_fraction("25/1"), Some(25.0));
+        assert_eq!(parse_fraction("25/0"), None);
+        assert_eq!(parse_fraction("not-a-fraction"), None);
+    }
+
+    /// Real values captured from ffprobe against an actual x265-encoded
+    /// HDR10 clip (`-x265-params master-display=G(8500,39850)B(6550,2300)
+    /// R(35400,14600)WP(15635,16450)L(10000000,50):max-cll=1000,400`) — not
+    /// guessed field names/scales.
+    fn real_hevc_mastering_display_side_data() -> Vec<FfprobeFrameSideData> {
+        vec![
+            FfprobeFrameSideData {
+                side_data_type: Some("Mastering display metadata".to_owned()),
+                red_x: Some("35400/50000".to_owned()),
+                red_y: Some("14600/50000".to_owned()),
+                green_x: Some("8500/50000".to_owned()),
+                green_y: Some("39850/50000".to_owned()),
+                blue_x: Some("6550/50000".to_owned()),
+                blue_y: Some("2300/50000".to_owned()),
+                white_point_x: Some("15635/50000".to_owned()),
+                white_point_y: Some("16450/50000".to_owned()),
+                min_luminance: Some("50/10000".to_owned()),
+                max_luminance: Some("10000000/10000".to_owned()),
+                ..FfprobeFrameSideData::default()
+            },
+            FfprobeFrameSideData {
+                side_data_type: Some("Content light level metadata".to_owned()),
+                max_content: Some(1000),
+                max_average: Some(400),
+                ..FfprobeFrameSideData::default()
+            },
+        ]
+    }
+
+    // Exact equality is intentional, not sloppy: both sides are a *single*
+    // division of the same integers, so IEEE-754's correctly-rounded
+    // division guarantees a bit-identical result either way — this isn't
+    // the classic "0.1 + 0.2" trap, which only bites when two independently
+    // *rounded* values are combined.
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn extracts_real_hevc_mastering_display_and_content_light_values() {
+        let hdr10 = hdr10_from_side_data(&real_hevc_mastering_display_side_data())
+            .expect("mastering display metadata should be found");
+        assert_eq!(hdr10.red_x, 0.708);
+        assert_eq!(hdr10.red_y, 0.292);
+        assert_eq!(hdr10.green_x, 0.17);
+        assert_eq!(hdr10.green_y, 0.797);
+        assert_eq!(hdr10.blue_x, 0.131);
+        assert_eq!(hdr10.blue_y, 0.046);
+        assert_eq!(hdr10.white_point_x, 0.3127);
+        assert_eq!(hdr10.white_point_y, 0.329);
+        assert_eq!(hdr10.max_luminance, 1000.0);
+        assert_eq!(hdr10.min_luminance, 0.005);
+        assert_eq!(hdr10.max_content_light, Some(1000));
+        assert_eq!(hdr10.max_average_light, Some(400));
+    }
+
+    #[test]
+    fn mastering_display_without_a_sibling_content_light_entry_is_still_extracted() {
+        let side_data = vec![
+            real_hevc_mastering_display_side_data()
+                .into_iter()
+                .next()
+                .unwrap(),
+        ];
+        let hdr10 = hdr10_from_side_data(&side_data).expect("should still extract");
+        assert_eq!(hdr10.max_content_light, None);
+        assert_eq!(hdr10.max_average_light, None);
+    }
+
+    #[test]
+    fn no_mastering_display_entry_means_no_hdr10() {
+        let side_data = vec![FfprobeFrameSideData {
+            side_data_type: Some("Content light level metadata".to_owned()),
+            max_content: Some(1000),
+            max_average: Some(400),
+            ..FfprobeFrameSideData::default()
+        }];
+        assert!(hdr10_from_side_data(&side_data).is_none());
     }
 
     fn stream(codec_type: &str, codec_name: &str) -> FfprobeStream {
@@ -414,7 +559,7 @@ mod tests {
         assert_eq!(info.width, 320);
         assert_eq!(info.height, 240);
         assert_eq!(info.bit_depth, 8);
-        assert!(!info.hdr10);
+        assert!(info.hdr10.is_none());
         assert!((1.5..2.5).contains(&info.duration_secs));
     }
 
@@ -425,5 +570,25 @@ mod tests {
             .expect("probe should succeed");
         assert_eq!(info.bit_depth, 10);
         assert_eq!(info.codec_name, "hevc");
+    }
+
+    /// `tests/fixtures/hdr10.mkv` was encoded with x265 with a hand-chosen
+    /// master-display/max-cll string, so the expected values here are known
+    /// ground truth, not just "whatever probing happens to return." Exact
+    /// float equality is safe here for the same reason noted on
+    /// `extracts_real_hevc_mastering_display_and_content_light_values`.
+    #[test]
+    #[ignore = "requires system ffprobe"]
+    #[allow(clippy::float_cmp)]
+    fn probes_real_hdr10_mastering_display_and_content_light() {
+        let info = probe_video(Path::new("ffprobe"), "tests/fixtures/hdr10.mkv")
+            .expect("probe should succeed");
+        let hdr10 = info.hdr10.expect("fixture has HDR10 metadata");
+        assert_eq!(hdr10.green_x, 8500.0 / 50000.0);
+        assert_eq!(hdr10.green_y, 39850.0 / 50000.0);
+        assert_eq!(hdr10.max_luminance, 10_000_000.0 / 10000.0);
+        assert_eq!(hdr10.min_luminance, 50.0 / 10000.0);
+        assert_eq!(hdr10.max_content_light, Some(1000));
+        assert_eq!(hdr10.max_average_light, Some(400));
     }
 }

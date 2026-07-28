@@ -1,4 +1,5 @@
 pub mod common;
+pub mod hdr;
 pub mod svt_av1;
 pub mod tracks;
 pub mod videotoolbox;
@@ -8,6 +9,7 @@ pub mod x265;
 use serde::{Deserialize, Serialize};
 
 use crate::filters::FilterSpec;
+use crate::probe::Hdr10Metadata;
 use svt_av1::SvtAv1Settings;
 use tracks::{AudioTrackSelection, SubtitleTrackSelection};
 use videotoolbox::{H264VideoToolboxSettings, HevcVideoToolboxSettings};
@@ -30,12 +32,17 @@ pub struct EncodeContext {
     /// same default as before per-track selection existed at all.
     pub audio_tracks: Vec<AudioTrackSelection>,
     pub subtitle_tracks: Vec<SubtitleTrackSelection>,
+    /// The source's own HDR10 metadata (from `probe_video`), carried through
+    /// automatically when the target encoder supports it (see [`hdr`]) —
+    /// there's no separate "preserve HDR" toggle yet, so any source that has
+    /// this gets it re-injected on encode.
+    pub hdr10: Option<Hdr10Metadata>,
 }
 
 impl EncodeContext {
-    /// Builds a context with no trim, fast-seek on, and every audio/
-    /// subtitle track copied (the common case, and nearly all call sites) —
-    /// override individual fields with struct-update syntax
+    /// Builds a context with no trim, fast-seek on, every audio/subtitle
+    /// track copied, and no HDR metadata (the common case, and nearly all
+    /// call sites) — override individual fields with struct-update syntax
     /// (`..EncodeContext::new(...)`) for the rest.
     pub fn new(source: impl Into<String>, output: impl Into<String>) -> Self {
         Self {
@@ -47,6 +54,7 @@ impl EncodeContext {
             fast_seek: true,
             audio_tracks: Vec::new(),
             subtitle_tracks: Vec::new(),
+            hdr10: None,
         }
     }
 

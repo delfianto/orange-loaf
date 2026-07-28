@@ -28,7 +28,11 @@
 
   // "Filters" and "Audio"/"Subtitles" are now real; only HDR remains a stub.
   const postFilterStubs: { id: SectionId; title: string; note: string }[] = [
-    { id: "hdr", title: "HDR / Advanced", note: "Coming in M8." },
+    {
+      id: "hdr",
+      title: "HDR / Advanced",
+      note: "HDR10 mastering-display/light-level metadata is preserved automatically for HEVC (x265) and AV1 (SVT-AV1) outputs — there's nothing to configure here yet. HDR10+, tonemap, and the other advanced controls are still coming.",
+    },
   ];
 
   $effect(() => {
@@ -52,6 +56,7 @@
     const trim = $state.snapshot(encode.trim);
     const audioTracks = $state.snapshot(encode.audioTracks);
     const subtitleTracks = $state.snapshot(encode.subtitleTracks);
+    const hdr10 = video.info ? $state.snapshot(video.info.hdr10) : null;
     void encode.refreshPreview(
       path,
       settings,
@@ -59,6 +64,7 @@
       trim,
       audioTracks,
       subtitleTracks,
+      hdr10,
     );
   });
 
@@ -183,7 +189,7 @@
     if (!video.path || !video.info || encode.status?.state === "running") {
       return;
     }
-    void encode.start(video.path, video.info.durationSecs);
+    void encode.start(video.path, video.info.durationSecs, video.info.hdr10);
   }
 
   function copyCommand(): void {

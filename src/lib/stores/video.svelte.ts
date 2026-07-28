@@ -21,6 +21,24 @@ export interface SubtitleTrack {
   isDefault: boolean;
 }
 
+// Mirrors src-tauri/src/probe.rs's `Hdr10Metadata` wire shape: chromaticity
+// as plain CIE 1931 xy (0..1), luminance in nits — not any one codec's own
+// fixed-point wire scale (that conversion happens Rust-side, per encoder).
+export interface Hdr10Metadata {
+  redX: number;
+  redY: number;
+  greenX: number;
+  greenY: number;
+  blueX: number;
+  blueY: number;
+  whitePointX: number;
+  whitePointY: number;
+  maxLuminance: number;
+  minLuminance: number;
+  maxContentLight: number | null;
+  maxAverageLight: number | null;
+}
+
 export interface VideoInfo {
   durationSecs: number;
   width: number;
@@ -29,7 +47,7 @@ export interface VideoInfo {
   pixFmt: string | null;
   bitDepth: number;
   frameRate: number | null;
-  hdr10: boolean;
+  hdr10: Hdr10Metadata | null;
   audioTracks: AudioTrack[];
   subtitleTracks: SubtitleTrack[];
 }
