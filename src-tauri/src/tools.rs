@@ -3,6 +3,32 @@ use std::process::Command;
 
 use serde::Serialize;
 
+use crate::config::Config;
+
+/// Resolves the ffmpeg binary to actually invoke, or an error message
+/// suitable for surfacing to the user if it can't be found.
+///
+/// # Errors
+///
+/// Returns an error if ffmpeg can't be located via configured path, env
+/// override, or `PATH`.
+pub fn ffmpeg_path(config: &Config) -> Result<PathBuf, String> {
+    locate_binary("ffmpeg", "FFMPEG", config.ffmpeg_path.as_ref())
+        .ok_or_else(|| "FFmpeg not found — set its path in Settings".to_owned())
+}
+
+/// Resolves the ffprobe binary to actually invoke, or an error message
+/// suitable for surfacing to the user if it can't be found.
+///
+/// # Errors
+///
+/// Returns an error if ffprobe can't be located via configured path, env
+/// override, or `PATH`.
+pub fn ffprobe_path(config: &Config) -> Result<PathBuf, String> {
+    locate_binary("ffprobe", "FFPROBE", config.ffprobe_path.as_ref())
+        .ok_or_else(|| "FFprobe not found — set its path in Settings".to_owned())
+}
+
 /// Detection result for a single external tool (ffmpeg, ffprobe, ...).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,7 +66,10 @@ fn resolve_binary(
 
 /// Locates a binary by, in order: an explicit user-configured path, a
 /// `VOLTAIC_<ENV_SUFFIX>` environment variable override, then a `PATH` lookup.
-fn locate_binary(
+///
+/// Shared by tool-status detection (this module) and anything that needs to
+/// actually invoke the binary (probing, thumbnailing, encoding, ...).
+pub fn locate_binary(
     binary_name: &str,
     env_suffix: &str,
     configured: Option<&PathBuf>,

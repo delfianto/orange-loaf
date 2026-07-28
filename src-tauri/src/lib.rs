@@ -1,6 +1,8 @@
 mod commands;
 mod config;
+mod probe;
 mod state;
+mod thumbnail;
 mod tools;
 
 use state::AppState;
@@ -20,6 +22,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::detect_tools,
             commands::set_tool_path,
+            commands::probe_video,
+            commands::generate_thumbnail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

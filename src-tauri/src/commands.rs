@@ -2,8 +2,10 @@ use std::path::PathBuf;
 
 use tauri::State;
 
+use crate::probe::{self, VideoInfo};
 use crate::state::AppState;
-use crate::tools::{ToolStatus, detect_tool};
+use crate::thumbnail;
+use crate::tools::{self, ToolStatus, detect_tool};
 
 fn detect_all(state: &AppState) -> Vec<ToolStatus> {
     let config = state.config.lock().expect("config mutex poisoned");
@@ -61,4 +63,46 @@ pub fn set_tool_path(
         config.save()?;
     }
     Ok(detect_all(&state))
+}
+
+/// Probes a source video and returns the metadata Voltaic currently shows.
+///
+/// # Errors
+///
+/// Returns an error if ffprobe isn't configured/found, or if probing fails
+/// (unreadable file, no video stream, ...).
+///
+/// # Panics
+///
+/// Panics if the config mutex is poisoned (i.e. a prior command panicked
+/// while holding it).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub fn probe_video(state: State<'_, AppState>, path: &str) -> Result<VideoInfo, String> {
+    let config = state.config.lock().expect("config mutex poisoned");
+    let ffprobe = tools::ffprobe_path(&config)?;
+    probe::probe_video(&ffprobe, path)
+}
+
+/// Extracts a preview thumbnail at `timestamp_secs` as a base64 JPEG data URI.
+///
+/// # Errors
+///
+/// Returns an error if ffmpeg isn't configured/found, or if frame extraction
+/// fails.
+///
+/// # Panics
+///
+/// Panics if the config mutex is poisoned (i.e. a prior command panicked
+/// while holding it).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub fn generate_thumbnail(
+    state: State<'_, AppState>,
+    path: &str,
+    timestamp_secs: f64,
+) -> Result<String, String> {
+    let config = state.config.lock().expect("config mutex poisoned");
+    let ffmpeg = tools::ffmpeg_path(&config)?;
+    thumbnail::generate_thumbnail(&ffmpeg, path, timestamp_secs)
 }
