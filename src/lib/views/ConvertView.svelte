@@ -11,26 +11,32 @@
     ENCODER_NAMES,
     X265_PRESETS,
     X264_PRESETS,
+    AUDIO_CODECS,
     type EncoderName,
+    type AudioTrackSelection,
+    type AudioAction,
   } from "$lib/stores/encode.svelte";
   import { sanitizeCrop } from "$lib/crop";
   import type { Crop } from "$lib/filters";
   import AccordionSection from "$lib/components/AccordionSection.svelte";
   import CropOverlay from "$lib/components/CropOverlay.svelte";
+  import TrackRow from "$lib/components/TrackRow.svelte";
 
   type SectionId =
     "quality" | "audio" | "subtitles" | "filters" | "hdr" | "command";
   let openSection: SectionId = $state("quality");
 
-  // Split around "Filters" (now real) to preserve the original
-  // Quality/Audio/Subtitles/Filters/HDR/Command Preview section order.
-  const preFilterStubs: { id: SectionId; title: string; note: string }[] = [
-    { id: "audio", title: "Audio", note: "Coming in M7." },
-    { id: "subtitles", title: "Subtitles", note: "Coming in M7." },
-  ];
+  // "Filters" and "Audio"/"Subtitles" are now real; only HDR remains a stub.
   const postFilterStubs: { id: SectionId; title: string; note: string }[] = [
     { id: "hdr", title: "HDR / Advanced", note: "Coming in M8." },
   ];
+
+  $effect(() => {
+    // A new source (or a cleared one) always gets a fresh, all-enabled
+    // track selection — see `resetTracksFrom`'s doc comment for why prior
+    // choices aren't carried over.
+    encode.resetTracksFrom(video.info);
+  });
 
   $effect(() => {
     const path = video.path;
@@ -44,7 +50,16 @@
     const settings = $state.snapshot(encode.settings);
     const filters = $state.snapshot(encode.filters);
     const trim = $state.snapshot(encode.trim);
-    void encode.refreshPreview(path, settings, filters, trim);
+    const audioTracks = $state.snapshot(encode.audioTracks);
+    const subtitleTracks = $state.snapshot(encode.subtitleTracks);
+    void encode.refreshPreview(
+      path,
+      settings,
+      filters,
+      trim,
+      audioTracks,
+      subtitleTracks,
+    );
   });
 
   function sourceName(path: string): string {
@@ -84,6 +99,24 @@
     if (encode.settings.name === "x265" || encode.settings.name === "x264") {
       encode.settings.tune = event.currentTarget.value || null;
     }
+  }
+
+  function onAudioActionKindChange(
+    selection: AudioTrackSelection,
+    event: Event & { currentTarget: HTMLSelectElement },
+  ): void {
+    selection.action =
+      event.currentTarget.value === "convert"
+        ? { action: "convert", codec: "aac", quality: 4, downmix: null }
+        : { action: "copy" };
+  }
+
+  function onDownmixChange(
+    action: Extract<AudioAction, { action: "convert" }>,
+    event: Event & { currentTarget: HTMLSelectElement },
+  ): void {
+    const raw = event.currentTarget.value;
+    action.downmix = raw === "" ? null : Number(raw);
   }
 
   function onToggleCrop(
@@ -449,15 +482,109 @@
         </div>
       </AccordionSection>
 
-      {#each preFilterStubs as section (section.id)}
-        <AccordionSection
-          title={section.title}
-          open={openSection === section.id}
-          onToggle={() => (openSection = section.id)}
-        >
-          <p class="text-base-content/50 text-sm">{section.note}</p>
-        </AccordionSection>
-      {/each}
+      <AccordionSection
+        title="Audio"
+        open={openSection === "audio"}
+        onToggle={() => (openSection = "audio")}
+      >
+        {#if encode.audioTracks.length === 0}
+          <p class="text-base-content/50 text-sm">
+            {video.path
+              ? "No audio tracks."
+              : "Choose a source to see its audio tracks."}
+          </p>
+        {:else}
+          <div class="flex flex-col">
+            {#each encode.audioTracks as selection, i (selection.index)}
+              {@const probed = video.info?.audioTracks[i]}
+              {@const action = selection.action}
+              <TrackRow
+                label={`Track ${String(selection.index + 1)}`}
+                language={probed?.language}
+                title={probed?.title}
+                isDefault={probed?.isDefault ?? false}
+                enabled={selection.enabled}
+                onToggle={(enabled: boolean) => (selection.enabled = enabled)}
+              >
+                <select
+                  class="select select-xs"
+                  value={action.action}
+                  onchange={(event) => {
+                    onAudioActionKindChange(selection, event);
+                  }}
+                >
+                  <option value="copy">Copy</option>
+                  <option value="convert">Convert</option>
+                </select>
+                {#if action.action === "convert"}
+                  <select class="select select-xs" bind:value={action.codec}>
+                    {#each AUDIO_CODECS as codec (codec.id)}
+                      <option value={codec.id}>{codec.label}</option>
+                    {/each}
+                  </select>
+                  {#if !AUDIO_CODECS.find((c) => c.id === action.codec)?.lossless}
+                    <input
+                      type="range"
+                      min="0"
+                      max="9"
+                      step="1"
+                      class="range range-primary range-xs w-16 shrink-0"
+                      bind:value={action.quality}
+                      title={`Quality ${String(action.quality)} (0 best, 9 smallest)`}
+                    />
+                  {/if}
+                  <select
+                    class="select select-xs"
+                    value={action.downmix ?? ""}
+                    onchange={(event) => {
+                      onDownmixChange(action, event);
+                    }}
+                  >
+                    <option value="">Source channels</option>
+                    {#if selection.sourceChannels > 2}
+                      <option value="2">Stereo</option>
+                    {/if}
+                    {#if selection.sourceChannels > 1}
+                      <option value="1">Mono</option>
+                    {/if}
+                  </select>
+                {/if}
+              </TrackRow>
+            {/each}
+          </div>
+        {/if}
+      </AccordionSection>
+
+      <AccordionSection
+        title="Subtitles"
+        open={openSection === "subtitles"}
+        onToggle={() => (openSection = "subtitles")}
+      >
+        {#if encode.subtitleTracks.length === 0}
+          <p class="text-base-content/50 text-sm">
+            {video.path
+              ? "No subtitle tracks."
+              : "Choose a source to see its subtitle tracks."}
+          </p>
+        {:else}
+          <div class="flex flex-col">
+            {#each encode.subtitleTracks as selection, i (selection.index)}
+              {@const probed = video.info?.subtitleTracks[i]}
+              <TrackRow
+                label={`Track ${String(selection.index + 1)}${probed ? ` — ${probed.codecName.toUpperCase()}` : ""}`}
+                language={probed?.language}
+                title={probed?.title}
+                isDefault={probed?.isDefault ?? false}
+                enabled={selection.enabled}
+                onToggle={(enabled: boolean) => (selection.enabled = enabled)}
+              />
+            {/each}
+          </div>
+          <p class="text-base-content/50 mt-3 text-xs">
+            Subtitles are copied as-is — burn-in isn't available yet.
+          </p>
+        {/if}
+      </AccordionSection>
 
       <AccordionSection
         title="Filters"

@@ -1,5 +1,6 @@
 pub mod common;
 pub mod svt_av1;
+pub mod tracks;
 pub mod videotoolbox;
 pub mod x264;
 pub mod x265;
@@ -8,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::filters::FilterSpec;
 use svt_av1::SvtAv1Settings;
+use tracks::{AudioTrackSelection, SubtitleTrackSelection};
 use videotoolbox::{H264VideoToolboxSettings, HevcVideoToolboxSettings};
 use x264::X264Settings;
 use x265::X265Settings;
@@ -24,12 +26,17 @@ pub struct EncodeContext {
     /// Whether trim seeks fast (keyframe-snapping, `-ss` before `-i`) or exact
     /// (`-ss`/`-to` after `-i`) — see [`common::build_prefix`].
     pub fast_seek: bool,
+    /// Empty means "copy every audio/subtitle track" (see [`tracks`]) — the
+    /// same default as before per-track selection existed at all.
+    pub audio_tracks: Vec<AudioTrackSelection>,
+    pub subtitle_tracks: Vec<SubtitleTrackSelection>,
 }
 
 impl EncodeContext {
-    /// Builds a context with no trim and fast-seek on (the common case),
-    /// which is nearly all call sites — override individual fields with
-    /// struct-update syntax (`..EncodeContext::new(...)`) for the rest.
+    /// Builds a context with no trim, fast-seek on, and every audio/
+    /// subtitle track copied (the common case, and nearly all call sites) —
+    /// override individual fields with struct-update syntax
+    /// (`..EncodeContext::new(...)`) for the rest.
     pub fn new(source: impl Into<String>, output: impl Into<String>) -> Self {
         Self {
             source: source.into(),
@@ -38,6 +45,8 @@ impl EncodeContext {
             start_time: None,
             end_time: None,
             fast_seek: true,
+            audio_tracks: Vec::new(),
+            subtitle_tracks: Vec::new(),
         }
     }
 

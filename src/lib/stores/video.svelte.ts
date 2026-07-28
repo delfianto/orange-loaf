@@ -1,6 +1,26 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
+// Mirrors src-tauri/src/probe.rs's `AudioTrack`/`SubtitleTrack` wire shape.
+// `index` is type-relative (matches ffmpeg's `-map 0:a:{index}`), not
+// ffprobe's global stream index.
+export interface AudioTrack {
+  index: number;
+  codecName: string;
+  channels: number;
+  language: string | null;
+  title: string | null;
+  isDefault: boolean;
+}
+
+export interface SubtitleTrack {
+  index: number;
+  codecName: string;
+  language: string | null;
+  title: string | null;
+  isDefault: boolean;
+}
+
 export interface VideoInfo {
   durationSecs: number;
   width: number;
@@ -10,6 +30,8 @@ export interface VideoInfo {
   bitDepth: number;
   frameRate: number | null;
   hdr10: boolean;
+  audioTracks: AudioTrack[];
+  subtitleTracks: SubtitleTrack[];
 }
 
 class VideoState {

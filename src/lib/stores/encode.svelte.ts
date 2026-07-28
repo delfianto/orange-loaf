@@ -1,6 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { defaultFilters, type FilterSpec } from "$lib/filters";
+import type {
+  AudioTrack,
+  SubtitleTrack,
+  VideoInfo,
+} from "$lib/stores/video.svelte";
 
 export type { Crop, FilterSpec } from "$lib/filters";
 
@@ -18,6 +23,19 @@ export const X265_PRESETS = [
 ] as const;
 
 export const X264_PRESETS = X265_PRESETS;
+
+// Scoped to codecs actually verified against this project's ffmpeg build
+// (notes/plan.md M7 scope note) — Appendix A's full table includes several
+// (libvorbis, libfdk_aac) that aren't reliably compiled into stock ffmpeg
+// and so aren't offered here.
+export const AUDIO_CODECS: { id: string; label: string; lossless: boolean }[] =
+  [
+    { id: "aac", label: "AAC", lossless: false },
+    { id: "libopus", label: "Opus", lossless: false },
+    { id: "libmp3lame", label: "MP3", lossless: false },
+    { id: "ac3", label: "AC-3 (Dolby Digital)", lossless: false },
+    { id: "flac", label: "FLAC (lossless)", lossless: true },
+  ];
 
 interface X265Fields {
   preset: string;
@@ -103,6 +121,44 @@ export function defaultTrim(): Trim {
   return { startTime: null, endTime: null, fastSeek: true };
 }
 
+// Mirrors src-tauri/src/encoders/tracks.rs's `AudioAction` wire shape
+// (pinned by a Rust-side test there, same reasoning as `EncoderSettings`).
+export type AudioAction =
+  | { action: "copy" }
+  | {
+      action: "convert";
+      codec: string;
+      quality: number;
+      downmix: number | null;
+    };
+
+export interface AudioTrackSelection {
+  index: number;
+  sourceChannels: number;
+  enabled: boolean;
+  action: AudioAction;
+}
+
+export interface SubtitleTrackSelection {
+  index: number;
+  enabled: boolean;
+}
+
+function selectionFromAudioTrack(track: AudioTrack): AudioTrackSelection {
+  return {
+    index: track.index,
+    sourceChannels: track.channels,
+    enabled: true,
+    action: { action: "copy" },
+  };
+}
+
+function selectionFromSubtitleTrack(
+  track: SubtitleTrack,
+): SubtitleTrackSelection {
+  return { index: track.index, enabled: true };
+}
+
 export type EncodeStatus =
   | { state: "running" }
   | { state: "completed" }
@@ -125,6 +181,8 @@ class EncodeState {
   settings: EncoderSettings = $state(defaultSettingsFor("x265"));
   filters: FilterSpec = $state(defaultFilters());
   trim: Trim = $state(defaultTrim());
+  audioTracks: AudioTrackSelection[] = $state([]);
+  subtitleTracks: SubtitleTrackSelection[] = $state([]);
   commandPreview: string[] = $state([]);
   jobId: string | null = $state(null);
   status: EncodeStatus | null = $state(null);
@@ -135,6 +193,20 @@ class EncodeState {
 
   selectEncoder(name: EncoderName): void {
     this.settings = defaultSettingsFor(name);
+  }
+
+  /**
+   * Re-derives the track selection from a freshly-probed source, every
+   * track defaulting to enabled+copy — call whenever `video.info` changes
+   * (a new source loaded, or cleared). Previous per-track choices are
+   * deliberately not preserved across sources: track *count* and codec can
+   * differ entirely between files, so index-based carryover would silently
+   * apply stale settings to unrelated tracks.
+   */
+  resetTracksFrom(info: VideoInfo | null): void {
+    this.audioTracks = info?.audioTracks.map(selectionFromAudioTrack) ?? [];
+    this.subtitleTracks =
+      info?.subtitleTracks.map(selectionFromSubtitleTrack) ?? [];
   }
 
   private async ensureListening(): Promise<void> {
@@ -153,6 +225,8 @@ class EncodeState {
     settings: EncoderSettings,
     filters: FilterSpec,
     trim: Trim,
+    audioTracks: AudioTrackSelection[],
+    subtitleTracks: SubtitleTrackSelection[],
   ): Promise<void> {
     if (!path) {
       this.commandPreview = [];
@@ -164,6 +238,8 @@ class EncodeState {
         settings,
         filters,
         trim,
+        audioTracks,
+        subtitleTracks,
       });
     } catch {
       this.commandPreview = [];
@@ -182,6 +258,8 @@ class EncodeState {
         settings: this.settings,
         filters: this.filters,
         trim: this.trim,
+        audioTracks: this.audioTracks,
+        subtitleTracks: this.subtitleTracks,
       });
     } catch (err) {
       this.status = { state: "failed", message: String(err) };

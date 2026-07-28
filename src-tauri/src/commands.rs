@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, State};
 
+use crate::encoders::tracks::{AudioTrackSelection, SubtitleTrackSelection};
 use crate::encoders::{EncodeContext, EncodeStep, EncoderKind, EncoderProfile, Trim};
 use crate::filters::FilterSpec;
 use crate::job;
@@ -141,7 +142,11 @@ pub fn generate_thumbnail(
 ///
 /// Panics if the config mutex is poisoned (i.e. a prior command panicked
 /// while holding it).
-#[allow(clippy::needless_pass_by_value)]
+// Every parameter is a distinct, necessary piece of IPC input (job
+// identity, encoder settings, and three independently-optional track/filter
+// selections) — bundling them into a wrapper struct would just move the
+// field count somewhere else, not reduce it.
+#[allow(clippy::needless_pass_by_value, clippy::too_many_arguments)]
 #[tauri::command]
 pub fn start_encode(
     app: AppHandle,
@@ -151,6 +156,8 @@ pub fn start_encode(
     settings: EncoderKind,
     filters: FilterSpec,
     trim: Trim,
+    audio_tracks: Vec<AudioTrackSelection>,
+    subtitle_tracks: Vec<SubtitleTrackSelection>,
 ) -> Result<String, String> {
     let ffmpeg = {
         let config = state.config.lock().expect("config mutex poisoned");
@@ -160,6 +167,8 @@ pub fn start_encode(
     let trimmed_duration_secs = trimmed_duration(duration_secs, &trim);
     let ctx = EncodeContext {
         filters,
+        audio_tracks,
+        subtitle_tracks,
         ..EncodeContext::new(path, output)
     }
     .with_trim(trim);
@@ -205,6 +214,8 @@ pub fn preview_command(
     settings: EncoderKind,
     filters: FilterSpec,
     trim: Trim,
+    audio_tracks: Vec<AudioTrackSelection>,
+    subtitle_tracks: Vec<SubtitleTrackSelection>,
 ) -> Result<Vec<String>, String> {
     let ffmpeg = {
         let config = state.config.lock().expect("config mutex poisoned");
@@ -213,6 +224,8 @@ pub fn preview_command(
     let output = derive_output_path(path)?;
     let ctx = EncodeContext {
         filters,
+        audio_tracks,
+        subtitle_tracks,
         ..EncodeContext::new(path, output)
     }
     .with_trim(trim);

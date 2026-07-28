@@ -1,4 +1,5 @@
 use super::EncodeContext;
+use super::tracks;
 
 fn push_seek_args(args: &mut Vec<String>, ctx: &EncodeContext) {
     if let Some(start) = ctx.start_time {
@@ -33,8 +34,8 @@ pub fn build_prefix(ctx: &EncodeContext) -> Vec<String> {
 
     args.push("-map".to_owned());
     args.push("0:v:0".to_owned());
-    args.push("-map".to_owned());
-    args.push("0:a?".to_owned());
+    args.extend(tracks::audio_map_args(&ctx.audio_tracks));
+    args.extend(tracks::subtitle_map_args(&ctx.subtitle_tracks));
 
     if let Some(filter_graph) = ctx.filters.render() {
         args.push("-vf".to_owned());
@@ -45,17 +46,18 @@ pub fn build_prefix(ctx: &EncodeContext) -> Vec<String> {
 }
 
 /// Builds the argv shared by every ffmpeg-native encoder after its
-/// codec-specific flags: audio passthrough (no audio settings UI yet — M7),
-/// progress reporting, and the output path.
+/// codec-specific flags: per-track audio/subtitle codec handling (see
+/// [`tracks`]), progress reporting, and the output path.
 pub fn build_suffix(ctx: &EncodeContext) -> Vec<String> {
-    vec![
-        "-c:a".to_owned(),
-        "copy".to_owned(),
+    let mut args = tracks::audio_codec_args(&ctx.audio_tracks);
+    args.extend(tracks::subtitle_codec_args(&ctx.subtitle_tracks));
+    args.extend([
         "-progress".to_owned(),
         "pipe:1".to_owned(),
         "-nostats".to_owned(),
         ctx.output.clone(),
-    ]
+    ]);
+    args
 }
 
 #[cfg(test)]

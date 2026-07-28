@@ -18,6 +18,33 @@ pub struct VideoInfo {
     pub bit_depth: u8,
     pub frame_rate: Option<f64>,
     pub hdr10: bool,
+    pub audio_tracks: Vec<AudioTrack>,
+    pub subtitle_tracks: Vec<SubtitleTrack>,
+}
+
+/// One audio stream as reported by ffprobe. `index` is *type-relative*
+/// (0 = first audio stream) to match ffmpeg's own `-map 0:a:{index}`
+/// addressing — deliberately not ffprobe's global stream `index`, which
+/// counts video/audio/subtitle/data streams together.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioTrack {
+    pub index: u32,
+    pub codec_name: String,
+    pub channels: u32,
+    pub language: Option<String>,
+    pub title: Option<String>,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubtitleTrack {
+    pub index: u32,
+    pub codec_name: String,
+    pub language: Option<String>,
+    pub title: Option<String>,
+    pub is_default: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -27,7 +54,7 @@ struct FfprobeOutput {
     format: FfprobeFormat,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct FfprobeStream {
     codec_type: String,
     codec_name: Option<String>,
@@ -37,14 +64,25 @@ struct FfprobeStream {
     bits_per_raw_sample: Option<String>,
     color_primaries: Option<String>,
     r_frame_rate: Option<String>,
+    channels: Option<u32>,
     #[serde(default)]
     disposition: FfprobeDisposition,
+    #[serde(default)]
+    tags: FfprobeTags,
 }
 
 #[derive(Debug, Deserialize, Default)]
 struct FfprobeDisposition {
     #[serde(default)]
     attached_pic: u8,
+    #[serde(default)]
+    default: u8,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct FfprobeTags {
+    language: Option<String>,
+    title: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -74,6 +112,41 @@ struct FfprobeFramesOutput {
 /// `disposition.attached_pic` set, rather than as an attachment stream).
 fn is_real_video_stream(stream: &FfprobeStream) -> bool {
     stream.codec_type == "video" && stream.disposition.attached_pic == 0
+}
+
+/// Enumerates every stream of `codec_type` and assigns each a type-relative
+/// index (0, 1, 2, ...) — this is what ffmpeg's own `-map 0:a:{index}` /
+/// `-map 0:s:{index}` addressing counts, unlike ffprobe's `index` field,
+/// which counts across all stream types together.
+fn audio_tracks(streams: &[FfprobeStream]) -> Vec<AudioTrack> {
+    streams
+        .iter()
+        .filter(|s| s.codec_type == "audio")
+        .enumerate()
+        .map(|(index, s)| AudioTrack {
+            index: u32::try_from(index).unwrap_or(u32::MAX),
+            codec_name: s.codec_name.clone().unwrap_or_else(|| "unknown".to_owned()),
+            channels: s.channels.unwrap_or(2),
+            language: s.tags.language.clone(),
+            title: s.tags.title.clone(),
+            is_default: s.disposition.default != 0,
+        })
+        .collect()
+}
+
+fn subtitle_tracks(streams: &[FfprobeStream]) -> Vec<SubtitleTrack> {
+    streams
+        .iter()
+        .filter(|s| s.codec_type == "subtitle")
+        .enumerate()
+        .map(|(index, s)| SubtitleTrack {
+            index: u32::try_from(index).unwrap_or(u32::MAX),
+            codec_name: s.codec_name.clone().unwrap_or_else(|| "unknown".to_owned()),
+            language: s.tags.language.clone(),
+            title: s.tags.title.clone(),
+            is_default: s.disposition.default != 0,
+        })
+        .collect()
 }
 
 /// Guesses bit depth, preferring ffprobe's own `bits_per_raw_sample` when it
@@ -221,12 +294,17 @@ pub fn probe_video(ffprobe: &Path, source: &str) -> Result<VideoInfo, String> {
             .as_deref()
             .and_then(parse_frame_rate),
         hdr10: detect_hdr10(ffprobe, source),
+        audio_tracks: audio_tracks(&parsed.streams),
+        subtitle_tracks: subtitle_tracks(&parsed.streams),
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{guess_bit_depth, parse_frame_rate, probe_video};
+    use super::{
+        FfprobeDisposition, FfprobeStream, FfprobeTags, audio_tracks, guess_bit_depth,
+        parse_frame_rate, probe_video, subtitle_tracks,
+    };
     use std::path::Path;
 
     #[test]
@@ -254,6 +332,73 @@ mod tests {
         assert_eq!(parse_frame_rate("25/1"), Some(25.0));
         assert_eq!(parse_frame_rate("25/0"), None);
         assert_eq!(parse_frame_rate("not-a-fraction"), None);
+    }
+
+    fn stream(codec_type: &str, codec_name: &str) -> FfprobeStream {
+        FfprobeStream {
+            codec_type: codec_type.to_owned(),
+            codec_name: Some(codec_name.to_owned()),
+            ..FfprobeStream::default()
+        }
+    }
+
+    #[test]
+    fn audio_and_subtitle_indices_are_type_relative_not_ffprobe_global_index() {
+        // video, audio, subtitle, audio, subtitle — interspersed on purpose:
+        // the second audio stream must land on type-relative index 1, not
+        // ffprobe's global stream index (3).
+        let streams = vec![
+            stream("video", "hevc"),
+            stream("audio", "aac"),
+            stream("subtitle", "subrip"),
+            stream("audio", "ac3"),
+            stream("subtitle", "ass"),
+        ];
+
+        let audio = audio_tracks(&streams);
+        assert_eq!(audio.len(), 2);
+        assert_eq!(audio[0].index, 0);
+        assert_eq!(audio[0].codec_name, "aac");
+        assert_eq!(audio[1].index, 1);
+        assert_eq!(audio[1].codec_name, "ac3");
+
+        let subtitles = subtitle_tracks(&streams);
+        assert_eq!(subtitles.len(), 2);
+        assert_eq!(subtitles[0].index, 0);
+        assert_eq!(subtitles[0].codec_name, "subrip");
+        assert_eq!(subtitles[1].index, 1);
+        assert_eq!(subtitles[1].codec_name, "ass");
+    }
+
+    #[test]
+    fn audio_track_reads_language_title_channels_and_default_disposition() {
+        let streams = vec![FfprobeStream {
+            codec_type: "audio".to_owned(),
+            codec_name: Some("aac".to_owned()),
+            channels: Some(6),
+            tags: FfprobeTags {
+                language: Some("eng".to_owned()),
+                title: Some("Commentary".to_owned()),
+            },
+            disposition: FfprobeDisposition {
+                default: 1,
+                ..FfprobeDisposition::default()
+            },
+            ..FfprobeStream::default()
+        }];
+
+        let audio = audio_tracks(&streams);
+        assert_eq!(audio.len(), 1);
+        assert_eq!(audio[0].channels, 6);
+        assert_eq!(audio[0].language.as_deref(), Some("eng"));
+        assert_eq!(audio[0].title.as_deref(), Some("Commentary"));
+        assert!(audio[0].is_default);
+    }
+
+    #[test]
+    fn audio_track_defaults_to_stereo_when_ffprobe_omits_channels() {
+        let streams = vec![stream("audio", "opus")];
+        assert_eq!(audio_tracks(&streams)[0].channels, 2);
     }
 
     // The tests below shell out to the real system ffprobe against the small
