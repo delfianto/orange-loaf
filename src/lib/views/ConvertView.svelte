@@ -343,6 +343,21 @@
                 class="range range-primary range-xs"
               />
             </label>
+          {:else if encode.settings.name === "h264Videotoolbox" || encode.settings.name === "hevcVideotoolbox"}
+            <label class="form-control col-span-2">
+              <span class="text-base-content/50 mb-1 text-xs"
+                >Quality <span class="font-mono">{encode.settings.quality}</span
+                > (higher is better)</span
+              >
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                bind:value={encode.settings.quality}
+                class="range range-primary range-xs"
+              />
+            </label>
           {/if}
         </div>
       </AccordionSection>

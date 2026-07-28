@@ -1,4 +1,5 @@
 pub mod svt_av1;
+pub mod videotoolbox;
 pub mod x264;
 pub mod x265;
 
@@ -6,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::filters::FilterSpec;
 use svt_av1::SvtAv1Settings;
+use videotoolbox::{H264VideoToolboxSettings, HevcVideoToolboxSettings};
 use x264::X264Settings;
 use x265::X265Settings;
 
@@ -45,6 +47,8 @@ pub enum EncoderKind {
     X265(X265Settings),
     X264(X264Settings),
     SvtAv1(SvtAv1Settings),
+    H264Videotoolbox(H264VideoToolboxSettings),
+    HevcVideotoolbox(HevcVideoToolboxSettings),
 }
 
 impl EncoderProfile for EncoderKind {
@@ -53,6 +57,8 @@ impl EncoderProfile for EncoderKind {
             Self::X265(settings) => settings.build_steps(ctx),
             Self::X264(settings) => settings.build_steps(ctx),
             Self::SvtAv1(settings) => settings.build_steps(ctx),
+            Self::H264Videotoolbox(settings) => settings.build_steps(ctx),
+            Self::HevcVideotoolbox(settings) => settings.build_steps(ctx),
         }
     }
 }
@@ -61,6 +67,7 @@ impl EncoderProfile for EncoderKind {
 mod tests {
     use super::EncoderKind;
     use super::svt_av1::SvtAv1Settings;
+    use super::videotoolbox::{H264VideoToolboxSettings, HevcVideoToolboxSettings};
     use super::x264::X264Settings;
     use super::x265::X265Settings;
 
@@ -79,6 +86,20 @@ mod tests {
         assert_eq!(
             serde_json::to_value(EncoderKind::SvtAv1(SvtAv1Settings::default())).unwrap()["name"],
             "svtAv1"
+        );
+        assert_eq!(
+            serde_json::to_value(EncoderKind::H264Videotoolbox(
+                H264VideoToolboxSettings::default()
+            ))
+            .unwrap()["name"],
+            "h264Videotoolbox"
+        );
+        assert_eq!(
+            serde_json::to_value(EncoderKind::HevcVideotoolbox(
+                HevcVideoToolboxSettings::default()
+            ))
+            .unwrap()["name"],
+            "hevcVideotoolbox"
         );
     }
 

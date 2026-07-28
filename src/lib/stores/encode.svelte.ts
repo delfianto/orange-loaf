@@ -37,13 +37,19 @@ interface SvtAv1Fields {
   tune: number | null;
 }
 
+interface VideoToolboxFields {
+  quality: number;
+}
+
 // Matches the exact wire shape of the Rust `#[serde(tag = "name")]` enum:
 // the tag and the inner struct's fields flattened at the same level (pinned
 // by a Rust-side test in encoders/mod.rs, not assumed independently here).
 export type EncoderSettings =
   | ({ name: "x265" } & X265Fields)
   | ({ name: "x264" } & X264Fields)
-  | ({ name: "svtAv1" } & SvtAv1Fields);
+  | ({ name: "svtAv1" } & SvtAv1Fields)
+  | ({ name: "h264Videotoolbox" } & VideoToolboxFields)
+  | ({ name: "hevcVideotoolbox" } & VideoToolboxFields);
 
 export type EncoderName = EncoderSettings["name"];
 
@@ -51,6 +57,8 @@ export const ENCODER_NAMES: { id: EncoderName; label: string }[] = [
   { id: "x265", label: "HEVC (x265)" },
   { id: "x264", label: "AVC (x264)" },
   { id: "svtAv1", label: "AV1 (SVT-AV1)" },
+  { id: "h264Videotoolbox", label: "H.264 (VideoToolbox)" },
+  { id: "hevcVideotoolbox", label: "HEVC (VideoToolbox)" },
 ];
 
 export function defaultSettingsFor(name: EncoderName): EncoderSettings {
@@ -74,6 +82,10 @@ export function defaultSettingsFor(name: EncoderName): EncoderSettings {
       };
     case "svtAv1":
       return { name: "svtAv1", speed: 7, crf: 24, tune: null };
+    case "h264Videotoolbox":
+      return { name: "h264Videotoolbox", quality: 60 };
+    case "hevcVideotoolbox":
+      return { name: "hevcVideotoolbox", quality: 60 };
   }
 }
 
