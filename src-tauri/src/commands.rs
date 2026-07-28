@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, State};
 
-use crate::encoders::{EncodeContext, EncodeStep, EncoderKind, EncoderProfile};
+use crate::encoders::{EncodeContext, EncodeStep, EncoderKind, EncoderProfile, Trim};
 use crate::filters::FilterSpec;
 use crate::job;
 use crate::probe::{self, VideoInfo};
@@ -150,26 +150,37 @@ pub fn start_encode(
     duration_secs: f64,
     settings: EncoderKind,
     filters: FilterSpec,
+    trim: Trim,
 ) -> Result<String, String> {
     let ffmpeg = {
         let config = state.config.lock().expect("config mutex poisoned");
         tools::ffmpeg_path(&config)?
     };
     let output = derive_output_path(&path)?;
+    let trimmed_duration_secs = trimmed_duration(duration_secs, &trim);
     let ctx = EncodeContext {
-        source: path,
-        output,
         filters,
-    };
+        ..EncodeContext::new(path, output)
+    }
+    .with_trim(trim);
     let steps = settings.build_steps(&ctx);
 
     let job_id = uuid::Uuid::new_v4().to_string();
     let job_id_for_task = job_id.clone();
     tauri::async_runtime::spawn(async move {
-        job::run(app, job_id_for_task, ffmpeg, steps, duration_secs).await;
+        job::run(app, job_id_for_task, ffmpeg, steps, trimmed_duration_secs).await;
     });
 
     Ok(job_id)
+}
+
+/// Progress percentage should be relative to what's actually being encoded —
+/// if the user trims to a 10s clip out of a 2-hour source, "50%" should mean
+/// 5s in, not 1 hour in.
+fn trimmed_duration(source_duration_secs: f64, trim: &Trim) -> f64 {
+    let start = trim.start_time.unwrap_or(0.0);
+    let end = trim.end_time.unwrap_or(source_duration_secs);
+    (end - start).max(0.0)
 }
 
 /// Builds the exact command the current settings would run, without
@@ -193,6 +204,7 @@ pub fn preview_command(
     path: &str,
     settings: EncoderKind,
     filters: FilterSpec,
+    trim: Trim,
 ) -> Result<Vec<String>, String> {
     let ffmpeg = {
         let config = state.config.lock().expect("config mutex poisoned");
@@ -200,10 +212,10 @@ pub fn preview_command(
     };
     let output = derive_output_path(path)?;
     let ctx = EncodeContext {
-        source: path.to_owned(),
-        output,
         filters,
-    };
+        ..EncodeContext::new(path, output)
+    }
+    .with_trim(trim);
     let steps = settings.build_steps(&ctx);
     let EncodeStep::Argv(mut args) = steps
         .into_iter()

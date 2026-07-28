@@ -18,13 +18,13 @@ impl Crop {
     }
 }
 
-/// The filter-graph inputs Voltaic supports today. Deliberately just
-/// crop/scale/rotate/flip for M3 — deinterlace, denoise, eq, and HDR tonemap
-/// join this (in the same fixed position in `render`'s stage order) when M6
-/// builds their UI.
+/// The filter-graph inputs Voltaic supports today. Denoise, eq, deblock, and
+/// HDR tonemap join this (in the same fixed position in `render`'s stage
+/// order, per notes/plan.md Appendix A) as their own UI lands.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FilterSpec {
+    pub deinterlace: bool,
     pub crop: Option<Crop>,
     pub scale_width: Option<u32>,
     pub scale_height: Option<u32>,
@@ -36,12 +36,16 @@ pub struct FilterSpec {
 
 impl FilterSpec {
     /// Renders the enabled stages into a single ffmpeg `-vf` filter-graph
-    /// string, in a fixed order (crop, scale, rotate, vflip, hflip), or
-    /// `None` if nothing is enabled — callers should omit `-vf` entirely in
-    /// that case rather than passing an empty filter graph.
+    /// string, in a fixed order (deinterlace, crop, scale, rotate, vflip,
+    /// hflip), or `None` if nothing is enabled — callers should omit `-vf`
+    /// entirely in that case rather than passing an empty filter graph.
     #[must_use]
     pub fn render(&self) -> Option<String> {
         let mut stages: Vec<String> = Vec::new();
+
+        if self.deinterlace {
+            stages.push("yadif".to_owned());
+        }
 
         if let Some(crop) = &self.crop {
             if !crop.is_noop() {
@@ -162,8 +166,18 @@ mod tests {
     }
 
     #[test]
-    fn stage_order_is_crop_then_scale_then_rotate_then_vflip_then_hflip() {
+    fn renders_deinterlace_as_yadif() {
         let spec = FilterSpec {
+            deinterlace: true,
+            ..FilterSpec::default()
+        };
+        assert_eq!(spec.render(), Some("yadif".to_owned()));
+    }
+
+    #[test]
+    fn stage_order_is_deinterlace_then_crop_then_scale_then_rotate_then_vflip_then_hflip() {
+        let spec = FilterSpec {
+            deinterlace: true,
             crop: Some(Crop {
                 top: 1,
                 bottom: 1,
@@ -178,7 +192,7 @@ mod tests {
         };
         assert_eq!(
             spec.render(),
-            Some("crop=iw-1-1:ih-1-1:1:1,scale=640:-2,transpose=1,vflip,hflip".to_owned())
+            Some("yadif,crop=iw-1-1:ih-1-1:1:1,scale=640:-2,transpose=1,vflip,hflip".to_owned())
         );
     }
 }

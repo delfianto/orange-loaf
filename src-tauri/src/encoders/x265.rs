@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::common::{build_prefix, build_suffix};
 use super::{EncodeContext, EncodeStep, EncoderProfile};
 
 /// x265's "Core" settings — the fields a user tunes for a normal encode.
@@ -30,15 +31,7 @@ impl Default for X265Settings {
 
 impl EncoderProfile for X265Settings {
     fn build_steps(&self, ctx: &EncodeContext) -> Vec<EncodeStep> {
-        let mut args: Vec<String> = ["-y", "-i", &ctx.source, "-map", "0:v:0", "-map", "0:a?"]
-            .into_iter()
-            .map(str::to_owned)
-            .collect();
-
-        if let Some(filter_graph) = ctx.filters.render() {
-            args.push("-vf".to_owned());
-            args.push(filter_graph);
-        }
+        let mut args = build_prefix(ctx);
 
         args.push("-c:v".to_owned());
         args.push("libx265".to_owned());
@@ -57,16 +50,7 @@ impl EncoderProfile for X265Settings {
         args.push("-pix_fmt".to_owned());
         args.push(self.pix_fmt.clone());
 
-        // No audio settings UI yet (M7) — copy whatever audio exists through
-        // unchanged so a first real encode is a usable file, not a silent one.
-        args.push("-c:a".to_owned());
-        args.push("copy".to_owned());
-
-        args.push("-progress".to_owned());
-        args.push("pipe:1".to_owned());
-        args.push("-nostats".to_owned());
-        args.push(ctx.output.clone());
-
+        args.extend(build_suffix(ctx));
         vec![EncodeStep::Argv(args)]
     }
 }
@@ -88,17 +72,12 @@ mod tests {
         args
     }
 
-    fn ctx(filters: FilterSpec) -> EncodeContext {
-        EncodeContext {
-            source: "in.mkv".to_owned(),
-            output: "out.mkv".to_owned(),
-            filters,
-        }
-    }
-
     #[test]
     fn builds_a_minimal_command_with_defaults() {
-        let args = argv(&X265Settings::default(), &ctx(FilterSpec::default()));
+        let args = argv(
+            &X265Settings::default(),
+            &EncodeContext::new("in.mkv", "out.mkv"),
+        );
         assert_eq!(
             args,
             vec![
@@ -134,18 +113,24 @@ mod tests {
             profile: Some("main10".to_owned()),
             ..X265Settings::default()
         };
-        let args = argv(&with_extras, &ctx(FilterSpec::default()));
+        let args = argv(&with_extras, &EncodeContext::new("in.mkv", "out.mkv"));
         assert!(args.windows(2).any(|w| w == ["-tune:v", "grain"]));
         assert!(args.windows(2).any(|w| w == ["-profile:v", "main10"]));
 
-        let without_extras = argv(&X265Settings::default(), &ctx(FilterSpec::default()));
+        let without_extras = argv(
+            &X265Settings::default(),
+            &EncodeContext::new("in.mkv", "out.mkv"),
+        );
         assert!(!without_extras.contains(&"-tune:v".to_owned()));
         assert!(!without_extras.contains(&"-profile:v".to_owned()));
     }
 
     #[test]
     fn includes_a_vf_flag_only_when_filters_are_active() {
-        let no_filters = argv(&X265Settings::default(), &ctx(FilterSpec::default()));
+        let no_filters = argv(
+            &X265Settings::default(),
+            &EncodeContext::new("in.mkv", "out.mkv"),
+        );
         assert!(!no_filters.contains(&"-vf".to_owned()));
 
         let cropped = FilterSpec {
@@ -157,7 +142,11 @@ mod tests {
             }),
             ..FilterSpec::default()
         };
-        let with_filters = argv(&X265Settings::default(), &ctx(cropped));
+        let ctx = EncodeContext {
+            filters: cropped,
+            ..EncodeContext::new("in.mkv", "out.mkv")
+        };
+        let with_filters = argv(&X265Settings::default(), &ctx);
         let vf_index = with_filters
             .iter()
             .position(|a| a == "-vf")

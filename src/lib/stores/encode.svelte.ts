@@ -1,5 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { defaultFilters, type FilterSpec } from "$lib/filters";
+
+export type { Crop, FilterSpec } from "$lib/filters";
 
 export const X265_PRESETS = [
   "ultrafast",
@@ -89,20 +92,15 @@ export function defaultSettingsFor(name: EncoderName): EncoderSettings {
   }
 }
 
-export interface Crop {
-  top: number;
-  bottom: number;
-  left: number;
-  right: number;
+// Mirrors src-tauri/src/encoders/mod.rs's `Trim` wire shape.
+export interface Trim {
+  startTime: number | null;
+  endTime: number | null;
+  fastSeek: boolean;
 }
 
-export interface FilterSpec {
-  crop: Crop | null;
-  scaleWidth: number | null;
-  scaleHeight: number | null;
-  rotateDegrees: number;
-  horizontalFlip: boolean;
-  verticalFlip: boolean;
+export function defaultTrim(): Trim {
+  return { startTime: null, endTime: null, fastSeek: true };
 }
 
 export type EncodeStatus =
@@ -123,20 +121,10 @@ interface EncodeEvent {
   progress: EncodeProgress | null;
 }
 
-function defaultFilters(): FilterSpec {
-  return {
-    crop: null,
-    scaleWidth: null,
-    scaleHeight: null,
-    rotateDegrees: 0,
-    horizontalFlip: false,
-    verticalFlip: false,
-  };
-}
-
 class EncodeState {
   settings: EncoderSettings = $state(defaultSettingsFor("x265"));
   filters: FilterSpec = $state(defaultFilters());
+  trim: Trim = $state(defaultTrim());
   commandPreview: string[] = $state([]);
   jobId: string | null = $state(null);
   status: EncodeStatus | null = $state(null);
@@ -164,6 +152,7 @@ class EncodeState {
     path: string | null,
     settings: EncoderSettings,
     filters: FilterSpec,
+    trim: Trim,
   ): Promise<void> {
     if (!path) {
       this.commandPreview = [];
@@ -174,6 +163,7 @@ class EncodeState {
         path,
         settings,
         filters,
+        trim,
       });
     } catch {
       this.commandPreview = [];
@@ -191,6 +181,7 @@ class EncodeState {
         durationSecs,
         settings: this.settings,
         filters: this.filters,
+        trim: this.trim,
       });
     } catch (err) {
       this.status = { state: "failed", message: String(err) };

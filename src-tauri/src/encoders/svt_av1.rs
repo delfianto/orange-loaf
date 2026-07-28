@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::common::{build_prefix, build_suffix};
 use super::{EncodeContext, EncodeStep, EncoderProfile};
 
 /// SVT-AV1's "Core" settings.
@@ -30,15 +31,7 @@ impl Default for SvtAv1Settings {
 
 impl EncoderProfile for SvtAv1Settings {
     fn build_steps(&self, ctx: &EncodeContext) -> Vec<EncodeStep> {
-        let mut args: Vec<String> = ["-y", "-i", &ctx.source, "-map", "0:v:0", "-map", "0:a?"]
-            .into_iter()
-            .map(str::to_owned)
-            .collect();
-
-        if let Some(filter_graph) = ctx.filters.render() {
-            args.push("-vf".to_owned());
-            args.push(filter_graph);
-        }
+        let mut args = build_prefix(ctx);
 
         args.push("-c:v".to_owned());
         args.push("libsvtav1".to_owned());
@@ -52,14 +45,7 @@ impl EncoderProfile for SvtAv1Settings {
             args.push(format!("tune={tune}"));
         }
 
-        args.push("-c:a".to_owned());
-        args.push("copy".to_owned());
-
-        args.push("-progress".to_owned());
-        args.push("pipe:1".to_owned());
-        args.push("-nostats".to_owned());
-        args.push(ctx.output.clone());
-
+        args.extend(build_suffix(ctx));
         vec![EncodeStep::Argv(args)]
     }
 }
@@ -68,15 +54,6 @@ impl EncoderProfile for SvtAv1Settings {
 mod tests {
     use super::{EncodeContext, EncoderProfile, SvtAv1Settings};
     use crate::encoders::EncodeStep;
-    use crate::filters::FilterSpec;
-
-    fn ctx() -> EncodeContext {
-        EncodeContext {
-            source: "in.mkv".to_owned(),
-            output: "out.mkv".to_owned(),
-            filters: FilterSpec::default(),
-        }
-    }
 
     #[test]
     fn the_speed_field_is_emitted_under_the_preset_flag() {
@@ -84,7 +61,7 @@ mod tests {
             speed: 4,
             ..SvtAv1Settings::default()
         };
-        let steps = settings.build_steps(&ctx());
+        let steps = settings.build_steps(&EncodeContext::new("in.mkv", "out.mkv"));
         let EncodeStep::Argv(args) = steps.into_iter().next().unwrap();
         assert!(args.windows(2).any(|w| w == ["-preset", "4"]));
         assert!(!args.contains(&"-speed".to_owned()));
@@ -102,14 +79,11 @@ mod tests {
             crf: 35.0,
             tune: None,
         };
-        let ctx = EncodeContext {
-            source: "tests/fixtures/sdr_8bit.mp4".to_owned(),
-            output: std::env::temp_dir()
-                .join("voltaic-svtav1-test.mkv")
-                .display()
-                .to_string(),
-            filters: FilterSpec::default(),
-        };
+        let output = std::env::temp_dir()
+            .join("voltaic-svtav1-test.mkv")
+            .display()
+            .to_string();
+        let ctx = EncodeContext::new("tests/fixtures/sdr_8bit.mp4", output);
         let EncodeStep::Argv(args) = settings.build_steps(&ctx).into_iter().next().unwrap();
 
         let output = std::process::Command::new("ffmpeg")
@@ -134,7 +108,7 @@ mod tests {
 
     #[test]
     fn builds_a_minimal_command_with_defaults() {
-        let steps = SvtAv1Settings::default().build_steps(&ctx());
+        let steps = SvtAv1Settings::default().build_steps(&EncodeContext::new("in.mkv", "out.mkv"));
         let EncodeStep::Argv(args) = steps.into_iter().next().unwrap();
         assert_eq!(
             args,

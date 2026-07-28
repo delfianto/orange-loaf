@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::common::{build_prefix, build_suffix};
 use super::{EncodeContext, EncodeStep, EncoderProfile};
 
 /// Shared `VideoToolbox` argv assembly — the h264/hevc `VideoToolbox` encoders
@@ -13,15 +14,7 @@ use super::{EncodeContext, EncodeStep, EncoderProfile};
 /// empirically (not assumed from docs): encoding the same source at q=20/50/90
 /// produced 11KiB/17KiB/93KiB outputs.
 fn build_args(ctx: &EncodeContext, codec: &str, pix_fmt: &str, quality: f32) -> Vec<String> {
-    let mut args: Vec<String> = ["-y", "-i", &ctx.source, "-map", "0:v:0", "-map", "0:a?"]
-        .into_iter()
-        .map(str::to_owned)
-        .collect();
-
-    if let Some(filter_graph) = ctx.filters.render() {
-        args.push("-vf".to_owned());
-        args.push(filter_graph);
-    }
+    let mut args = build_prefix(ctx);
 
     args.push("-c:v".to_owned());
     args.push(codec.to_owned());
@@ -30,14 +23,7 @@ fn build_args(ctx: &EncodeContext, codec: &str, pix_fmt: &str, quality: f32) -> 
     args.push("-pix_fmt".to_owned());
     args.push(pix_fmt.to_owned());
 
-    args.push("-c:a".to_owned());
-    args.push("copy".to_owned());
-
-    args.push("-progress".to_owned());
-    args.push("pipe:1".to_owned());
-    args.push("-nostats".to_owned());
-    args.push(ctx.output.clone());
-
+    args.extend(build_suffix(ctx));
     args
 }
 
@@ -96,20 +82,11 @@ mod tests {
         EncodeContext, EncoderProfile, H264VideoToolboxSettings, HevcVideoToolboxSettings,
     };
     use crate::encoders::EncodeStep;
-    use crate::filters::FilterSpec;
-
-    fn ctx() -> EncodeContext {
-        EncodeContext {
-            source: "in.mkv".to_owned(),
-            output: "out.mkv".to_owned(),
-            filters: FilterSpec::default(),
-        }
-    }
 
     #[test]
     fn h264_uses_yuv420p_and_the_h264_codec() {
         let EncodeStep::Argv(args) = H264VideoToolboxSettings::default()
-            .build_steps(&ctx())
+            .build_steps(&EncodeContext::new("in.mkv", "out.mkv"))
             .into_iter()
             .next()
             .unwrap();
@@ -120,7 +97,7 @@ mod tests {
     #[test]
     fn hevc_uses_p010le_and_the_hevc_codec() {
         let EncodeStep::Argv(args) = HevcVideoToolboxSettings::default()
-            .build_steps(&ctx())
+            .build_steps(&EncodeContext::new("in.mkv", "out.mkv"))
             .into_iter()
             .next()
             .unwrap();
@@ -131,7 +108,11 @@ mod tests {
     #[test]
     fn quality_is_emitted_under_q_v() {
         let settings = HevcVideoToolboxSettings { quality: 42.0 };
-        let EncodeStep::Argv(args) = settings.build_steps(&ctx()).into_iter().next().unwrap();
+        let EncodeStep::Argv(args) = settings
+            .build_steps(&EncodeContext::new("in.mkv", "out.mkv"))
+            .into_iter()
+            .next()
+            .unwrap();
         assert!(args.windows(2).any(|w| w == ["-q:v", "42"]));
     }
 
@@ -184,13 +165,10 @@ mod tests {
     }
 
     fn real_ctx(label: &str) -> EncodeContext {
-        EncodeContext {
-            source: "tests/fixtures/sdr_8bit.mp4".to_owned(),
-            output: std::env::temp_dir()
-                .join(format!("voltaic-vt-{label}-test.mkv"))
-                .display()
-                .to_string(),
-            filters: FilterSpec::default(),
-        }
+        let output = std::env::temp_dir()
+            .join(format!("voltaic-vt-{label}-test.mkv"))
+            .display()
+            .to_string();
+        EncodeContext::new("tests/fixtures/sdr_8bit.mp4", output)
     }
 }

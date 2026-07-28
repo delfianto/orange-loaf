@@ -2,6 +2,9 @@
   import FolderOpen from "lucide-svelte/icons/folder-open";
   import Loader from "lucide-svelte/icons/loader-circle";
   import Copy from "lucide-svelte/icons/copy";
+  import RotateCw from "lucide-svelte/icons/rotate-cw";
+  import FlipHorizontal from "lucide-svelte/icons/flip-horizontal-2";
+  import FlipVertical from "lucide-svelte/icons/flip-vertical-2";
   import { video } from "$lib/stores/video.svelte";
   import {
     encode,
@@ -10,24 +13,38 @@
     X264_PRESETS,
     type EncoderName,
   } from "$lib/stores/encode.svelte";
+  import { sanitizeCrop } from "$lib/crop";
+  import type { Crop } from "$lib/filters";
   import AccordionSection from "$lib/components/AccordionSection.svelte";
+  import CropOverlay from "$lib/components/CropOverlay.svelte";
 
   type SectionId =
     "quality" | "audio" | "subtitles" | "filters" | "hdr" | "command";
   let openSection: SectionId = $state("quality");
 
-  const stubSections: { id: SectionId; title: string; note: string }[] = [
+  // Split around "Filters" (now real) to preserve the original
+  // Quality/Audio/Subtitles/Filters/HDR/Command Preview section order.
+  const preFilterStubs: { id: SectionId; title: string; note: string }[] = [
     { id: "audio", title: "Audio", note: "Coming in M7." },
     { id: "subtitles", title: "Subtitles", note: "Coming in M7." },
-    { id: "filters", title: "Filters", note: "Coming in M6." },
+  ];
+  const postFilterStubs: { id: SectionId; title: string; note: string }[] = [
     { id: "hdr", title: "HDR / Advanced", note: "Coming in M8." },
   ];
 
   $effect(() => {
     const path = video.path;
-    const settings = encode.settings;
-    const filters = encode.filters;
-    void encode.refreshPreview(path, settings, filters);
+    // `$state.snapshot` (rather than a plain reference read) is what makes
+    // this effect actually depend on nested field changes — CRF, crop
+    // corners, trim times, etc. A shallow read of `encode.settings` only
+    // depends on *that field being reassigned wholesale*, which slider/
+    // input edits never do; they mutate a nested property in place, which
+    // a shallow read silently misses (verified directly against this
+    // Svelte version before relying on it, not assumed from docs).
+    const settings = $state.snapshot(encode.settings);
+    const filters = $state.snapshot(encode.filters);
+    const trim = $state.snapshot(encode.trim);
+    void encode.refreshPreview(path, settings, filters, trim);
   });
 
   function sourceName(path: string): string {
@@ -67,6 +84,66 @@
     if (encode.settings.name === "x265" || encode.settings.name === "x264") {
       encode.settings.tune = event.currentTarget.value || null;
     }
+  }
+
+  function onToggleCrop(
+    event: Event & { currentTarget: HTMLInputElement },
+  ): void {
+    if (!event.currentTarget.checked) {
+      encode.filters.crop = null;
+      return;
+    }
+    if (!video.info) {
+      return;
+    }
+    const { width, height } = video.info;
+    encode.filters.crop = sanitizeCrop(
+      {
+        top: Math.round(height * 0.1),
+        bottom: Math.round(height * 0.1),
+        left: Math.round(width * 0.1),
+        right: Math.round(width * 0.1),
+      },
+      width,
+      height,
+    );
+  }
+
+  // Re-sanitizes on blur/enter so a hand-typed value (odd, out-of-range,
+  // negative) always settles back into a crop ffmpeg can run — the same
+  // rule the drag tool enforces on every move. Live typing itself is left
+  // alone (via `bind:value`) rather than sanitized on every keystroke,
+  // which would fight the user's cursor mid-edit.
+  function commitCrop(): void {
+    if (!encode.filters.crop || !video.info) {
+      return;
+    }
+    encode.filters.crop = sanitizeCrop(
+      encode.filters.crop,
+      video.info.width,
+      video.info.height,
+    );
+  }
+
+  function onScaleInput(
+    dimension: "scaleWidth" | "scaleHeight",
+    event: Event & { currentTarget: HTMLInputElement },
+  ): void {
+    const raw = event.currentTarget.value;
+    encode.filters[dimension] =
+      raw === "" ? null : Math.max(1, Math.round(Number(raw)));
+  }
+
+  function rotateClockwise(): void {
+    encode.filters.rotateDegrees = (encode.filters.rotateDegrees + 90) % 360;
+  }
+
+  function onTrimInput(
+    field: "startTime" | "endTime",
+    event: Event & { currentTarget: HTMLInputElement },
+  ): void {
+    const raw = event.currentTarget.value;
+    encode.trim[field] = raw === "" ? null : Number(raw);
   }
 
   function onConvertClick(): void {
@@ -205,6 +282,16 @@
               ? "Preview not available yet"
               : "Choose a source to get started"}
           </p>
+        {/if}
+        {#if video.info && encode.filters.crop}
+          {@const info = video.info}
+          {@const crop = encode.filters.crop}
+          <CropOverlay
+            sourceWidth={info.width}
+            sourceHeight={info.height}
+            {crop}
+            onChange={(next: Crop) => (encode.filters.crop = next)}
+          />
         {/if}
       </div>
 
@@ -362,7 +449,227 @@
         </div>
       </AccordionSection>
 
-      {#each stubSections as section (section.id)}
+      {#each preFilterStubs as section (section.id)}
+        <AccordionSection
+          title={section.title}
+          open={openSection === section.id}
+          onToggle={() => (openSection = section.id)}
+        >
+          <p class="text-base-content/50 text-sm">{section.note}</p>
+        </AccordionSection>
+      {/each}
+
+      <AccordionSection
+        title="Filters"
+        open={openSection === "filters"}
+        onToggle={() => (openSection = "filters")}
+      >
+        <div class="flex flex-col gap-5">
+          <label class="flex items-center justify-between">
+            <span class="text-sm">Deinterlace</span>
+            <input
+              type="checkbox"
+              class="toggle toggle-primary toggle-sm"
+              bind:checked={encode.filters.deinterlace}
+            />
+          </label>
+
+          <div class="flex flex-col gap-2">
+            <label class="flex items-center justify-between">
+              <span class="text-sm">Crop</span>
+              <input
+                type="checkbox"
+                class="toggle toggle-primary toggle-sm"
+                checked={encode.filters.crop != null}
+                disabled={!video.info}
+                onchange={onToggleCrop}
+              />
+            </label>
+            {#if encode.filters.crop}
+              {@const crop = encode.filters.crop}
+              <div class="grid grid-cols-4 gap-2">
+                <label class="form-control">
+                  <span class="text-base-content/50 mb-1 text-xs">Top</span>
+                  <input
+                    type="number"
+                    min="0"
+                    class="input input-xs"
+                    bind:value={crop.top}
+                    onchange={commitCrop}
+                  />
+                </label>
+                <label class="form-control">
+                  <span class="text-base-content/50 mb-1 text-xs">Bottom</span>
+                  <input
+                    type="number"
+                    min="0"
+                    class="input input-xs"
+                    bind:value={crop.bottom}
+                    onchange={commitCrop}
+                  />
+                </label>
+                <label class="form-control">
+                  <span class="text-base-content/50 mb-1 text-xs">Left</span>
+                  <input
+                    type="number"
+                    min="0"
+                    class="input input-xs"
+                    bind:value={crop.left}
+                    onchange={commitCrop}
+                  />
+                </label>
+                <label class="form-control">
+                  <span class="text-base-content/50 mb-1 text-xs">Right</span>
+                  <input
+                    type="number"
+                    min="0"
+                    class="input input-xs"
+                    bind:value={crop.right}
+                    onchange={commitCrop}
+                  />
+                </label>
+              </div>
+              <p class="text-base-content/50 text-xs">
+                Drag the frame's handles above to crop visually, or type exact
+                pixel values here.
+              </p>
+            {/if}
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <label class="form-control">
+              <span class="text-base-content/50 mb-1 text-xs">Scale width</span>
+              <input
+                type="number"
+                min="1"
+                placeholder="auto"
+                class="input input-xs"
+                value={encode.filters.scaleWidth ?? ""}
+                oninput={(event) => {
+                  onScaleInput("scaleWidth", event);
+                }}
+              />
+            </label>
+            <label class="form-control">
+              <span class="text-base-content/50 mb-1 text-xs">Scale height</span
+              >
+              <input
+                type="number"
+                min="1"
+                placeholder="auto"
+                class="input input-xs"
+                value={encode.filters.scaleHeight ?? ""}
+                oninput={(event) => {
+                  onScaleInput("scaleHeight", event);
+                }}
+              />
+            </label>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="btn btn-sm"
+              onclick={rotateClockwise}
+              aria-label="Rotate 90° clockwise"
+            >
+              <RotateCw class="h-4 w-4" />
+              {encode.filters.rotateDegrees}°
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm"
+              class:btn-primary={encode.filters.horizontalFlip}
+              onclick={() => {
+                encode.filters.horizontalFlip = !encode.filters.horizontalFlip;
+              }}
+              aria-label="Flip horizontally"
+            >
+              <FlipHorizontal class="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm"
+              class:btn-primary={encode.filters.verticalFlip}
+              onclick={() => {
+                encode.filters.verticalFlip = !encode.filters.verticalFlip;
+              }}
+              aria-label="Flip vertically"
+            >
+              <FlipVertical class="h-4 w-4" />
+            </button>
+          </div>
+
+          <div class="border-hairline border-t pt-4">
+            <p class="mb-2 text-sm font-medium">Trim</p>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="form-control">
+                <span class="text-base-content/50 mb-1 text-xs">Start (s)</span>
+                <div class="join">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    class="input input-xs join-item w-full"
+                    placeholder="0"
+                    value={encode.trim.startTime ?? ""}
+                    oninput={(event) => {
+                      onTrimInput("startTime", event);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    class="btn btn-xs join-item"
+                    onclick={() => (encode.trim.startTime = video.scrubTime)}
+                  >
+                    Set
+                  </button>
+                </div>
+              </label>
+              <label class="form-control">
+                <span class="text-base-content/50 mb-1 text-xs">End (s)</span>
+                <div class="join">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    class="input input-xs join-item w-full"
+                    placeholder={video.info
+                      ? video.info.durationSecs.toFixed(1)
+                      : ""}
+                    value={encode.trim.endTime ?? ""}
+                    oninput={(event) => {
+                      onTrimInput("endTime", event);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    class="btn btn-xs join-item"
+                    onclick={() => (encode.trim.endTime = video.scrubTime)}
+                  >
+                    Set
+                  </button>
+                </div>
+              </label>
+            </div>
+            <label class="mt-3 flex items-center justify-between">
+              <span class="text-sm"
+                >Fast seek
+                <span class="text-base-content/50 text-xs">
+                  (snaps to the nearest keyframe; faster, less exact)
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                class="toggle toggle-primary toggle-sm"
+                bind:checked={encode.trim.fastSeek}
+              />
+            </label>
+          </div>
+        </div>
+      </AccordionSection>
+
+      {#each postFilterStubs as section (section.id)}
         <AccordionSection
           title={section.title}
           open={openSection === section.id}

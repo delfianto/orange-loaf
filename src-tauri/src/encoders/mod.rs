@@ -1,3 +1,4 @@
+pub mod common;
 pub mod svt_av1;
 pub mod videotoolbox;
 pub mod x264;
@@ -17,6 +18,57 @@ pub struct EncodeContext {
     pub source: String,
     pub output: String,
     pub filters: FilterSpec,
+    /// Trim range in source seconds; `None` means "from the start"/"to the end".
+    pub start_time: Option<f64>,
+    pub end_time: Option<f64>,
+    /// Whether trim seeks fast (keyframe-snapping, `-ss` before `-i`) or exact
+    /// (`-ss`/`-to` after `-i`) — see [`common::build_prefix`].
+    pub fast_seek: bool,
+}
+
+impl EncodeContext {
+    /// Builds a context with no trim and fast-seek on (the common case),
+    /// which is nearly all call sites — override individual fields with
+    /// struct-update syntax (`..EncodeContext::new(...)`) for the rest.
+    pub fn new(source: impl Into<String>, output: impl Into<String>) -> Self {
+        Self {
+            source: source.into(),
+            output: output.into(),
+            filters: FilterSpec::default(),
+            start_time: None,
+            end_time: None,
+            fast_seek: true,
+        }
+    }
+
+    /// Applies a [`Trim`] received over IPC to this context.
+    pub fn with_trim(mut self, trim: Trim) -> Self {
+        self.start_time = trim.start_time;
+        self.end_time = trim.end_time;
+        self.fast_seek = trim.fast_seek;
+        self
+    }
+}
+
+/// The trim range for a job, as received from the frontend — kept as its
+/// own IPC-facing type (rather than passing three loose params) for the
+/// same reason [`FilterSpec`] is: one clearly-named thing to bind a form to.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Trim {
+    pub start_time: Option<f64>,
+    pub end_time: Option<f64>,
+    pub fast_seek: bool,
+}
+
+impl Default for Trim {
+    fn default() -> Self {
+        Self {
+            start_time: None,
+            end_time: None,
+            fast_seek: true,
+        }
+    }
 }
 
 /// One command to actually run. Currently always a plain argv list — the

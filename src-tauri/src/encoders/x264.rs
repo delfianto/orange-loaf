@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::common::{build_prefix, build_suffix};
 use super::{EncodeContext, EncodeStep, EncoderProfile};
 
 /// x264's "Core" settings. `pix_fmt` is deliberately not user-configurable —
@@ -27,15 +28,7 @@ impl Default for X264Settings {
 
 impl EncoderProfile for X264Settings {
     fn build_steps(&self, ctx: &EncodeContext) -> Vec<EncodeStep> {
-        let mut args: Vec<String> = ["-y", "-i", &ctx.source, "-map", "0:v:0", "-map", "0:a?"]
-            .into_iter()
-            .map(str::to_owned)
-            .collect();
-
-        if let Some(filter_graph) = ctx.filters.render() {
-            args.push("-vf".to_owned());
-            args.push(filter_graph);
-        }
+        let mut args = build_prefix(ctx);
 
         args.push("-c:v".to_owned());
         args.push("libx264".to_owned());
@@ -54,14 +47,7 @@ impl EncoderProfile for X264Settings {
         args.push("-pix_fmt".to_owned());
         args.push("yuv420p".to_owned());
 
-        args.push("-c:a".to_owned());
-        args.push("copy".to_owned());
-
-        args.push("-progress".to_owned());
-        args.push("pipe:1".to_owned());
-        args.push("-nostats".to_owned());
-        args.push(ctx.output.clone());
-
+        args.extend(build_suffix(ctx));
         vec![EncodeStep::Argv(args)]
     }
 }
@@ -70,16 +56,10 @@ impl EncoderProfile for X264Settings {
 mod tests {
     use super::{EncodeContext, EncoderProfile, X264Settings};
     use crate::encoders::EncodeStep;
-    use crate::filters::FilterSpec;
 
     #[test]
     fn builds_a_minimal_command_with_defaults() {
-        let ctx = EncodeContext {
-            source: "in.mkv".to_owned(),
-            output: "out.mkv".to_owned(),
-            filters: FilterSpec::default(),
-        };
-        let steps = X264Settings::default().build_steps(&ctx);
+        let steps = X264Settings::default().build_steps(&EncodeContext::new("in.mkv", "out.mkv"));
         let EncodeStep::Argv(args) = steps.into_iter().next().unwrap();
         assert_eq!(
             args,
@@ -111,12 +91,7 @@ mod tests {
 
     #[test]
     fn pix_fmt_is_always_yuv420p_regardless_of_settings() {
-        let ctx = EncodeContext {
-            source: "in.mkv".to_owned(),
-            output: "out.mkv".to_owned(),
-            filters: FilterSpec::default(),
-        };
-        let steps = X264Settings::default().build_steps(&ctx);
+        let steps = X264Settings::default().build_steps(&EncodeContext::new("in.mkv", "out.mkv"));
         let EncodeStep::Argv(args) = steps.into_iter().next().unwrap();
         let pix_fmt_index = args.iter().position(|a| a == "-pix_fmt").unwrap();
         assert_eq!(args[pix_fmt_index + 1], "yuv420p");
