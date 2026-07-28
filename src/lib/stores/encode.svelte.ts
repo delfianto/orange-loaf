@@ -14,12 +14,67 @@ export const X265_PRESETS = [
   "placebo",
 ] as const;
 
-export interface X265Settings {
+export const X264_PRESETS = X265_PRESETS;
+
+interface X265Fields {
   preset: string;
   tune: string | null;
   profile: string | null;
   crf: number;
   pixFmt: string;
+}
+
+interface X264Fields {
+  preset: string;
+  tune: string | null;
+  profile: string | null;
+  crf: number;
+}
+
+interface SvtAv1Fields {
+  speed: number;
+  crf: number;
+  tune: number | null;
+}
+
+// Matches the exact wire shape of the Rust `#[serde(tag = "name")]` enum:
+// the tag and the inner struct's fields flattened at the same level (pinned
+// by a Rust-side test in encoders/mod.rs, not assumed independently here).
+export type EncoderSettings =
+  | ({ name: "x265" } & X265Fields)
+  | ({ name: "x264" } & X264Fields)
+  | ({ name: "svtAv1" } & SvtAv1Fields);
+
+export type EncoderName = EncoderSettings["name"];
+
+export const ENCODER_NAMES: { id: EncoderName; label: string }[] = [
+  { id: "x265", label: "HEVC (x265)" },
+  { id: "x264", label: "AVC (x264)" },
+  { id: "svtAv1", label: "AV1 (SVT-AV1)" },
+];
+
+export function defaultSettingsFor(name: EncoderName): EncoderSettings {
+  switch (name) {
+    case "x265":
+      return {
+        name: "x265",
+        preset: "medium",
+        tune: null,
+        profile: null,
+        crf: 22,
+        pixFmt: "yuv420p10le",
+      };
+    case "x264":
+      return {
+        name: "x264",
+        preset: "medium",
+        tune: null,
+        profile: null,
+        crf: 23,
+      };
+    case "svtAv1":
+      return { name: "svtAv1", speed: 7, crf: 24, tune: null };
+  }
 }
 
 export interface Crop {
@@ -56,16 +111,6 @@ interface EncodeEvent {
   progress: EncodeProgress | null;
 }
 
-function defaultSettings(): X265Settings {
-  return {
-    preset: "medium",
-    tune: null,
-    profile: null,
-    crf: 22,
-    pixFmt: "yuv420p10le",
-  };
-}
-
 function defaultFilters(): FilterSpec {
   return {
     crop: null,
@@ -78,7 +123,7 @@ function defaultFilters(): FilterSpec {
 }
 
 class EncodeState {
-  settings: X265Settings = $state(defaultSettings());
+  settings: EncoderSettings = $state(defaultSettingsFor("x265"));
   filters: FilterSpec = $state(defaultFilters());
   commandPreview: string[] = $state([]);
   jobId: string | null = $state(null);
@@ -87,6 +132,10 @@ class EncodeState {
   starting = $state(false);
 
   private listening: Promise<void> | null = null;
+
+  selectEncoder(name: EncoderName): void {
+    this.settings = defaultSettingsFor(name);
+  }
 
   private async ensureListening(): Promise<void> {
     this.listening ??= listen<EncodeEvent>("encode:event", (event) => {
@@ -101,7 +150,7 @@ class EncodeState {
 
   async refreshPreview(
     path: string | null,
-    settings: X265Settings,
+    settings: EncoderSettings,
     filters: FilterSpec,
   ): Promise<void> {
     if (!path) {

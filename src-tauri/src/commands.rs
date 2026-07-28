@@ -2,8 +2,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, State};
 
-use crate::encoders::x265::X265Settings;
-use crate::encoders::{EncodeContext, EncodeStep, EncoderProfile};
+use crate::encoders::{EncodeContext, EncodeStep, EncoderKind, EncoderProfile};
 use crate::filters::FilterSpec;
 use crate::job;
 use crate::probe::{self, VideoInfo};
@@ -128,7 +127,7 @@ pub fn generate_thumbnail(
     thumbnail::generate_thumbnail(&ffmpeg, path, timestamp_secs)
 }
 
-/// Starts an x265 encode of `path` with the given settings/filters as a
+/// Starts an encode of `path` with the given encoder settings/filters as a
 /// background job, returning immediately with a job id. Progress and
 /// completion/failure are streamed as `encode:event` events (see
 /// [`job::run`]) rather than returned from this command.
@@ -149,7 +148,7 @@ pub fn start_encode(
     state: State<'_, AppState>,
     path: String,
     duration_secs: f64,
-    settings: X265Settings,
+    settings: EncoderKind,
     filters: FilterSpec,
 ) -> Result<String, String> {
     let ffmpeg = {
@@ -175,7 +174,7 @@ pub fn start_encode(
 
 /// Builds the exact command the current settings would run, without
 /// executing anything — powers the live "Command Preview" section. Reuses
-/// [`X265Settings::build_steps`] directly so the preview can never drift
+/// [`EncoderProfile::build_steps`] directly so the preview can never drift
 /// from what `start_encode` actually runs.
 ///
 /// # Errors
@@ -192,7 +191,7 @@ pub fn start_encode(
 pub fn preview_command(
     state: State<'_, AppState>,
     path: &str,
-    settings: X265Settings,
+    settings: EncoderKind,
     filters: FilterSpec,
 ) -> Result<Vec<String>, String> {
     let ffmpeg = {

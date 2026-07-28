@@ -3,7 +3,13 @@
   import Loader from "lucide-svelte/icons/loader-circle";
   import Copy from "lucide-svelte/icons/copy";
   import { video } from "$lib/stores/video.svelte";
-  import { encode, X265_PRESETS } from "$lib/stores/encode.svelte";
+  import {
+    encode,
+    ENCODER_NAMES,
+    X265_PRESETS,
+    X264_PRESETS,
+    type EncoderName,
+  } from "$lib/stores/encode.svelte";
   import AccordionSection from "$lib/components/AccordionSection.svelte";
 
   type SectionId =
@@ -42,10 +48,25 @@
     void video.seekTo(Number(event.currentTarget.value));
   }
 
+  function isEncoderName(value: string): value is EncoderName {
+    return ENCODER_NAMES.some((encoder) => encoder.id === value);
+  }
+
+  function onEncoderChange(
+    event: Event & { currentTarget: HTMLSelectElement },
+  ): void {
+    const { value } = event.currentTarget;
+    if (isEncoderName(value)) {
+      encode.selectEncoder(value);
+    }
+  }
+
   function onTuneChange(
     event: Event & { currentTarget: HTMLSelectElement },
   ): void {
-    encode.settings.tune = event.currentTarget.value || null;
+    if (encode.settings.name === "x265" || encode.settings.name === "x264") {
+      encode.settings.tune = event.currentTarget.value || null;
+    }
   }
 
   function onConvertClick(): void {
@@ -93,6 +114,15 @@
       {/if}
     </div>
     <div class="flex items-center gap-3">
+      <select
+        class="select select-sm"
+        value={encode.settings.name}
+        onchange={onEncoderChange}
+      >
+        {#each ENCODER_NAMES as enc (enc.id)}
+          <option value={enc.id}>{enc.label}</option>
+        {/each}
+      </select>
       <button
         type="button"
         class="btn btn-ghost btn-sm"
@@ -205,46 +235,115 @@
         onToggle={() => (openSection = "quality")}
       >
         <div class="grid grid-cols-2 gap-x-4 gap-y-3">
-          <label class="form-control">
-            <span class="text-base-content/50 mb-1 text-xs">Preset</span>
-            <select
-              class="select select-sm"
-              bind:value={encode.settings.preset}
-            >
-              {#each X265_PRESETS as preset (preset)}
-                <option value={preset}>{preset}</option>
-              {/each}
-            </select>
-          </label>
-
-          <label class="form-control">
-            <span class="text-base-content/50 mb-1 text-xs">Tune</span>
-            <select
-              class="select select-sm"
-              value={encode.settings.tune ?? ""}
-              onchange={onTuneChange}
-            >
-              <option value="">Default</option>
-              <option value="grain">Grain</option>
-              <option value="animation">Animation</option>
-              <option value="fastdecode">Fast Decode</option>
-              <option value="zerolatency">Zero Latency</option>
-            </select>
-          </label>
-
-          <label class="form-control col-span-2">
-            <span class="text-base-content/50 mb-1 text-xs"
-              >CRF <span class="font-mono">{encode.settings.crf}</span></span
-            >
-            <input
-              type="range"
-              min="0"
-              max="51"
-              step="1"
-              bind:value={encode.settings.crf}
-              class="range range-primary range-xs"
-            />
-          </label>
+          {#if encode.settings.name === "x265"}
+            <label class="form-control">
+              <span class="text-base-content/50 mb-1 text-xs">Preset</span>
+              <select
+                class="select select-sm"
+                bind:value={encode.settings.preset}
+              >
+                {#each X265_PRESETS as preset (preset)}
+                  <option value={preset}>{preset}</option>
+                {/each}
+              </select>
+            </label>
+            <label class="form-control">
+              <span class="text-base-content/50 mb-1 text-xs">Tune</span>
+              <select
+                class="select select-sm"
+                value={encode.settings.tune ?? ""}
+                onchange={onTuneChange}
+              >
+                <option value="">Default</option>
+                <option value="grain">Grain</option>
+                <option value="animation">Animation</option>
+                <option value="fastdecode">Fast Decode</option>
+                <option value="zerolatency">Zero Latency</option>
+              </select>
+            </label>
+            <label class="form-control col-span-2">
+              <span class="text-base-content/50 mb-1 text-xs"
+                >CRF <span class="font-mono">{encode.settings.crf}</span></span
+              >
+              <input
+                type="range"
+                min="0"
+                max="51"
+                step="1"
+                bind:value={encode.settings.crf}
+                class="range range-primary range-xs"
+              />
+            </label>
+          {:else if encode.settings.name === "x264"}
+            <label class="form-control">
+              <span class="text-base-content/50 mb-1 text-xs">Preset</span>
+              <select
+                class="select select-sm"
+                bind:value={encode.settings.preset}
+              >
+                {#each X264_PRESETS as preset (preset)}
+                  <option value={preset}>{preset}</option>
+                {/each}
+              </select>
+            </label>
+            <label class="form-control">
+              <span class="text-base-content/50 mb-1 text-xs">Tune</span>
+              <select
+                class="select select-sm"
+                value={encode.settings.tune ?? ""}
+                onchange={onTuneChange}
+              >
+                <option value="">Default</option>
+                <option value="film">Film</option>
+                <option value="animation">Animation</option>
+                <option value="grain">Grain</option>
+                <option value="fastdecode">Fast Decode</option>
+                <option value="zerolatency">Zero Latency</option>
+              </select>
+            </label>
+            <label class="form-control col-span-2">
+              <span class="text-base-content/50 mb-1 text-xs"
+                >CRF <span class="font-mono">{encode.settings.crf}</span></span
+              >
+              <input
+                type="range"
+                min="0"
+                max="51"
+                step="1"
+                bind:value={encode.settings.crf}
+                class="range range-primary range-xs"
+              />
+            </label>
+          {:else if encode.settings.name === "svtAv1"}
+            <label class="form-control col-span-2">
+              <span class="text-base-content/50 mb-1 text-xs"
+                >Preset (speed) <span class="font-mono"
+                  >{encode.settings.speed}</span
+                ></span
+              >
+              <input
+                type="range"
+                min="0"
+                max="13"
+                step="1"
+                bind:value={encode.settings.speed}
+                class="range range-primary range-xs"
+              />
+            </label>
+            <label class="form-control col-span-2">
+              <span class="text-base-content/50 mb-1 text-xs"
+                >CRF <span class="font-mono">{encode.settings.crf}</span></span
+              >
+              <input
+                type="range"
+                min="0"
+                max="63"
+                step="1"
+                bind:value={encode.settings.crf}
+                class="range range-primary range-xs"
+              />
+            </label>
+          {/if}
         </div>
       </AccordionSection>
 
