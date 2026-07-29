@@ -166,7 +166,7 @@ mod tests {
 
     fn real_ctx(label: &str) -> EncodeContext {
         let output = std::env::temp_dir()
-            .join(format!("voltaic-vt-{label}-test.mkv"))
+            .join(format!("orangeloaf-vt-{label}-test.mkv"))
             .display()
             .to_string();
         EncodeContext::new("tests/fixtures/sdr_8bit.mp4", output)

@@ -1,8 +1,8 @@
-# Voltaic — Design System
+# OrangeLoaf — Design System
 
 ## Product context
 
-Voltaic is a desktop video transcoding application (Tauri + Rust + Svelte 5)
+OrangeLoaf is a desktop video transcoding application (Tauri + Rust + Svelte 5)
 that wraps FFmpeg and ~30 software/hardware encoder backends (x264, x265, SVT-AV1, AOM AV1,
 rav1e, VP9, VVC, NVENC/NVEncC, QSVEncC, VCEEncC, VAAPI, VideoToolbox). Its whole reason for
 being is fixing the failure mode common to older tools in this space — **visual noise with

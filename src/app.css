@@ -4,11 +4,11 @@
 }
 
 /*
- * Voltaic theme — a direct CSS translation of the tokens in design/design-system.md.
+ * OrangeLoaf theme — a direct CSS translation of the tokens in design/design-system.md.
  * Dark-only by design (see notes/plan.md §8): no light variant is defined.
  */
 @plugin "daisyui/theme" {
-  name: "voltaic";
+  name: "orangeloaf";
   default: true;
   prefersdark: true;
   color-scheme: dark;

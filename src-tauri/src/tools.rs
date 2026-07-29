@@ -65,7 +65,7 @@ fn resolve_binary(
 }
 
 /// Locates a binary by, in order: an explicit user-configured path, a
-/// `VOLTAIC_<ENV_SUFFIX>` environment variable override, then a `PATH` lookup.
+/// `ORANGELOAF_<ENV_SUFFIX>` environment variable override, then a `PATH` lookup.
 ///
 /// Shared by tool-status detection (this module) and anything that needs to
 /// actually invoke the binary (probing, thumbnailing, encoding, ...).
@@ -74,7 +74,7 @@ pub fn locate_binary(
     env_suffix: &str,
     configured: Option<&PathBuf>,
 ) -> Option<PathBuf> {
-    let env_override = std::env::var(format!("VOLTAIC_{env_suffix}"))
+    let env_override = std::env::var(format!("ORANGELOAF_{env_suffix}"))
         .ok()
         .map(PathBuf::from);
     resolve_binary(binary_name, configured, env_override.as_deref())
@@ -124,8 +124,10 @@ mod tests {
     }
 
     fn temp_dir(label: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("voltaic-tools-test-{label}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "orangeloaf-tools-test-{label}-{}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).expect("failed to create temp test dir");
         dir
     }
@@ -164,7 +166,7 @@ mod tests {
 
     #[test]
     fn falls_through_to_path_lookup_and_returns_none_for_unknown_binary() {
-        let found = resolve_binary("definitely-not-a-real-binary-voltaic-test", None, None);
+        let found = resolve_binary("definitely-not-a-real-binary-orangeloaf-test", None, None);
 
         assert_eq!(found, None);
     }

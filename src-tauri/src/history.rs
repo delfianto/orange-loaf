@@ -48,10 +48,10 @@ const MAX_ENTRIES: usize = 200;
 
 impl History {
     pub fn file_path() -> Option<PathBuf> {
-        if let Ok(path) = std::env::var("VOLTAIC_HISTORY") {
+        if let Ok(path) = std::env::var("ORANGELOAF_HISTORY") {
             return Some(PathBuf::from(path));
         }
-        directories::ProjectDirs::from("dev", "voltaic", "Voltaic")
+        directories::ProjectDirs::from("dev", "orangeloaf", "OrangeLoaf")
             .map(|dirs| dirs.data_dir().join("history.json"))
     }
 

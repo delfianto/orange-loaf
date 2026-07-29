@@ -1,7 +1,7 @@
 {
-  "name": "voltaic",
+  "name": "orange-loaf",
   "version": "0.1.0",
-  "description": "Voltaic — a desktop video encoder GUI for FFmpeg",
+  "description": "OrangeLoaf — a desktop video encoder GUI for FFmpeg",
   "type": "module",
   "license": "MIT",
   "scripts": {

@@ -107,10 +107,10 @@ fn built_in_profiles() -> Vec<Profile> {
 
 impl Profiles {
     pub fn file_path() -> Option<PathBuf> {
-        if let Ok(path) = std::env::var("VOLTAIC_PROFILES") {
+        if let Ok(path) = std::env::var("ORANGELOAF_PROFILES") {
             return Some(PathBuf::from(path));
         }
-        directories::ProjectDirs::from("dev", "voltaic", "Voltaic")
+        directories::ProjectDirs::from("dev", "orangeloaf", "OrangeLoaf")
             .map(|dirs| dirs.data_dir().join("profiles.json"))
     }
 

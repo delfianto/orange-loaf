@@ -225,7 +225,7 @@ fn channel_layout_label(channels: u32) -> String {
     }
 }
 
-/// Voltaic only ever detects HDR10 (mastering-display SEI/OBU) today — see
+/// `OrangeLoaf` only ever detects HDR10 (mastering-display SEI/OBU) today — see
 /// `probe::Hdr10Metadata` and notes/plan.md M8's scope note on HDR10+/Dolby
 /// Vision. The HLG check is a real, independently-probed signal (the
 /// transfer characteristic ffprobe reports), not a guess.
@@ -964,7 +964,7 @@ mod tests {
     #[ignore = "requires system ffprobe"]
     fn finalize_output_naming_renames_a_real_file_and_resolves_placeholders() {
         let dir =
-            std::env::temp_dir().join(format!("voltaic-naming-test-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("orangeloaf-naming-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("should create scratch dir");
         let original = dir.join("Movie-FFFSIZE.mkv");
         std::fs::write(

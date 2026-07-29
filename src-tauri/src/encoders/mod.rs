@@ -105,7 +105,7 @@ pub trait EncoderProfile {
     fn build_steps(&self, ctx: &EncodeContext) -> Vec<EncodeStep>;
 }
 
-/// Every encoder Voltaic currently supports, as a tagged union rather than
+/// Every encoder `OrangeLoaf` currently supports, as a tagged union rather than
 /// ~30 `Option<XSettings>` sibling fields — see notes/plan.md §4.4 on why
 /// the prior art's untagged-union-of-options shape needed workarounds
 /// (reverse-lookup-by-name, reassign-after-construction) that a tagged enum

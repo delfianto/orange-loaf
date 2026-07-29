@@ -81,12 +81,12 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Resolves where the config file lives, honoring `VOLTAIC_CONFIG` if set.
+    /// Resolves where the config file lives, honoring `ORANGELOAF_CONFIG` if set.
     pub fn file_path() -> Option<PathBuf> {
-        if let Ok(path) = std::env::var("VOLTAIC_CONFIG") {
+        if let Ok(path) = std::env::var("ORANGELOAF_CONFIG") {
             return Some(PathBuf::from(path));
         }
-        directories::ProjectDirs::from("dev", "voltaic", "Voltaic")
+        directories::ProjectDirs::from("dev", "orangeloaf", "OrangeLoaf")
             .map(|dirs| dirs.config_dir().join("config.json"))
     }
 

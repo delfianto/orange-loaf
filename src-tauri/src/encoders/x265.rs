@@ -231,7 +231,7 @@ mod tests {
                 .expect("fixture has HDR10 metadata");
 
         let output = std::env::temp_dir()
-            .join("voltaic-x265-hdr10-test.mkv")
+            .join("orangeloaf-x265-hdr10-test.mkv")
             .display()
             .to_string();
         let ctx = EncodeContext {

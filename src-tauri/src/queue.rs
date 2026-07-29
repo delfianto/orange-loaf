@@ -77,14 +77,14 @@ pub struct Queue {
 }
 
 impl Queue {
-    /// Honors `VOLTAIC_QUEUE` (mirroring `Config::file_path`'s
-    /// `VOLTAIC_CONFIG`), else a per-user data directory — deliberately
+    /// Honors `ORANGELOAF_QUEUE` (mirroring `Config::file_path`'s
+    /// `ORANGELOAF_CONFIG`), else a per-user data directory — deliberately
     /// *not* the config directory: this is runtime state, not a setting.
     pub fn file_path() -> Option<PathBuf> {
-        if let Ok(path) = std::env::var("VOLTAIC_QUEUE") {
+        if let Ok(path) = std::env::var("ORANGELOAF_QUEUE") {
             return Some(PathBuf::from(path));
         }
-        directories::ProjectDirs::from("dev", "voltaic", "Voltaic")
+        directories::ProjectDirs::from("dev", "orangeloaf", "OrangeLoaf")
             .map(|dirs| dirs.data_dir().join("queue.json"))
     }
 
@@ -103,7 +103,7 @@ impl Queue {
 
     /// The actual load logic, taking an explicit path rather than resolving
     /// one itself — this is what makes it testable against a scratch
-    /// tempfile without touching `VOLTAIC_QUEUE`/real user state (setting
+    /// tempfile without touching `ORANGELOAF_QUEUE`/real user state (setting
     /// an env var for the duration of a test needs `unsafe` under edition
     /// 2024, which this crate forbids — see `tools.rs` for the same
     /// reasoning applied to config path resolution).
@@ -566,7 +566,8 @@ mod tests {
 
     #[test]
     fn save_to_load_from_round_trips_and_resets_a_running_job_to_queued() {
-        let dir = std::env::temp_dir().join(format!("voltaic-queue-test-{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("orangeloaf-queue-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("failed to create scratch dir");
         let path = dir.join("queue.json");
 
@@ -645,11 +646,11 @@ mod tests {
         let handle = app.handle().clone();
 
         let output1 = std::env::temp_dir()
-            .join("voltaic-queue-test-1.mkv")
+            .join("orangeloaf-queue-test-1.mkv")
             .display()
             .to_string();
         let output2 = std::env::temp_dir()
-            .join("voltaic-queue-test-2.mkv")
+            .join("orangeloaf-queue-test-2.mkv")
             .display()
             .to_string();
         let _ = std::fs::remove_file(&output1);
@@ -772,8 +773,10 @@ mod tests {
     #[ignore = "requires system ffmpeg, and takes a few real seconds"]
     #[allow(clippy::too_many_lines)]
     fn real_cancel_kills_the_running_process_and_the_queue_moves_on() {
-        let source =
-            std::env::temp_dir().join(format!("voltaic-cancel-src-{}.mkv", uuid::Uuid::new_v4()));
+        let source = std::env::temp_dir().join(format!(
+            "orangeloaf-cancel-src-{}.mkv",
+            uuid::Uuid::new_v4()
+        ));
         let generated = std::process::Command::new("ffmpeg")
             .args([
                 "-y",
@@ -800,11 +803,11 @@ mod tests {
         let handle = app.handle().clone();
 
         let slow_output = std::env::temp_dir()
-            .join("voltaic-queue-cancel-test.mkv")
+            .join("orangeloaf-queue-cancel-test.mkv")
             .display()
             .to_string();
         let next_output = std::env::temp_dir()
-            .join("voltaic-queue-cancel-test-next.mkv")
+            .join("orangeloaf-queue-cancel-test-next.mkv")
             .display()
             .to_string();
         let _ = std::fs::remove_file(&slow_output);
@@ -925,7 +928,7 @@ mod tests {
         let mut state = mock_state();
         state.config = Mutex::new(crate::config::Config {
             output_naming_template:
-                "voltaic-naming-it-{source}-{encoder}-{source_resolution}-{filesize}".to_owned(),
+                "orangeloaf-naming-it-{source}-{encoder}-{source_resolution}-{filesize}".to_owned(),
             ..crate::config::Config::default()
         });
         app.manage(state);
@@ -970,7 +973,7 @@ mod tests {
         let job_id = queue_after_enqueue.jobs[0].id.clone();
         let pre_encode_output = queue_after_enqueue.jobs[0].output.clone();
         assert!(
-            pre_encode_output.contains("voltaic-naming-it-sdr_8bit-x264-320x240-FFFSIZE"),
+            pre_encode_output.contains("orangeloaf-naming-it-sdr_8bit-x264-320x240-FFFSIZE"),
             "pre-encode resolution didn't produce the expected stem: {pre_encode_output}"
         );
 

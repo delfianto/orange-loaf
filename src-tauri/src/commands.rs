@@ -16,7 +16,7 @@ use crate::tools::{self, ToolStatus, detect_tool};
 
 /// Resolves the configured naming template (falling back to the built-in
 /// default if it's been cleared to blank) into a real output path next to
-/// the source. Replaces the old hardcoded `movie.mp4` -> `movie-voltaic.mkv`
+/// the source. Replaces the old hardcoded `movie.mp4` -> `movie-orangeloaf.mkv`
 /// placeholder now that a real template system exists (notes/plan.md M12).
 pub(crate) fn build_output_path(
     template: &str,
@@ -57,7 +57,7 @@ fn detect_all(state: &AppState) -> Vec<ToolStatus> {
     ]
 }
 
-/// Detects the status of every external tool Voltaic depends on.
+/// Detects the status of every external tool `OrangeLoaf` depends on.
 ///
 /// # Panics
 ///
@@ -102,7 +102,7 @@ pub fn set_tool_path(
     Ok(detect_all(&state))
 }
 
-/// Probes a source video and returns the metadata Voltaic currently shows.
+/// Probes a source video and returns the metadata `OrangeLoaf` currently shows.
 ///
 /// # Errors
 ///

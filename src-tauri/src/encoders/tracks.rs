@@ -317,7 +317,7 @@ mod tests {
         use super::super::common::{build_prefix, build_suffix};
 
         let output = std::env::temp_dir()
-            .join("voltaic-tracks-test.mkv")
+            .join("orangeloaf-tracks-test.mkv")
             .display()
             .to_string();
         let ctx = EncodeContext {

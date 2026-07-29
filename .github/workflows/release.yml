@@ -1,8 +1,16 @@
 name: Release
 
 # Tag-triggered (or manual) rather than on every push, since this builds and
-# uploads real installer artifacts for all 3 platforms — not something to
-# run on every commit.
+# uploads a real installer artifact — not something to run on every commit.
+#
+# Linux-only, deliberately: Windows/macOS both need real code-signing and,
+# for macOS, notarization to produce installers that don't just get flagged
+# by the OS on a fresh machine — neither is set up here (no certificates,
+# no Apple/Microsoft developer accounts), and it's not worth chasing for
+# this project. Anyone who wants a Windows or macOS build is free to check
+# out the repo and run `just build`/`cargo tauri build` themselves — the
+# underlying Rust/Tauri code is still fully cross-platform, only this
+# release pipeline isn't.
 on:
   push:
     tags:
@@ -11,23 +19,11 @@ on:
 
 jobs:
   release:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            args: "--target universal-apple-darwin"
-          - platform: ubuntu-22.04
-            args: ""
-          - platform: windows-latest
-            args: ""
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
 
       - name: Install Linux system dependencies
-        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
@@ -37,8 +33,6 @@ jobs:
           bun-version: latest
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -49,31 +43,19 @@ jobs:
       # No FFmpeg/FFprobe binary is downloaded or bundled here — a
       # deliberate scope decision (notes/plan.md M14), matching this app's
       # own BYO philosophy (Settings > Detected External Programs lets a
-      # user point at any local install). The fresh-machine smoke test this
-      # milestone's acceptance criterion asks for therefore only covers
-      # install -> launch -> "FFmpeg not found" detection correctly
-      # reporting itself, not a full encode — that needs a runner image
-      # with FFmpeg preinstalled, which isn't set up here.
+      # user point at any local install).
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Real code signing needs real, currently-unconfigured secrets
-          # (notes/plan.md M14 scope note) — until these repo secrets
-          # exist, every build here is genuinely unsigned, which
-          # tauri-action and the OS installers both handle gracefully
-          # (ad-hoc signed on macOS, unsigned on Windows/Linux):
-          #   macOS:   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD,
-          #            APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD,
-          #            APPLE_TEAM_ID (notarization)
-          #   Windows: WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD
         with:
           tagName: v__VERSION__
-          releaseName: "Voltaic v__VERSION__"
+          releaseName: "OrangeLoaf v__VERSION__"
           releaseBody: |
             See the assets below to download and install this version.
 
-            Builds are currently unsigned — see notes/plan.md M14 for why
-            and what's needed to change that.
+            Linux only (.deb/.rpm/.AppImage) — see notes/plan.md M14 for
+            why Windows/macOS builds aren't produced here. Builds are
+            unsigned; the .deb/.rpm/.AppImage formats don't need that to
+            install and run normally on Linux.
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}

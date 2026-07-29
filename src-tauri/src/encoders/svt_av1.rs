@@ -115,7 +115,7 @@ mod tests {
             tune: None,
         };
         let output = std::env::temp_dir()
-            .join("voltaic-svtav1-test.mkv")
+            .join("orangeloaf-svtav1-test.mkv")
             .display()
             .to_string();
         let ctx = EncodeContext::new("tests/fixtures/sdr_8bit.mp4", output);
@@ -221,7 +221,7 @@ mod tests {
                 .expect("fixture has HDR10 metadata");
 
         let output = std::env::temp_dir()
-            .join("voltaic-svtav1-hdr10-test.mkv")
+            .join("orangeloaf-svtav1-hdr10-test.mkv")
             .display()
             .to_string();
         let ctx = EncodeContext {

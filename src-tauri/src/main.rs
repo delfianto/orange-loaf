@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    voltaic_lib::run();
+    orange_loaf_lib::run();
 }

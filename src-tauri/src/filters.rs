@@ -18,7 +18,7 @@ impl Crop {
     }
 }
 
-/// The filter-graph inputs Voltaic supports today. Denoise, eq, deblock, and
+/// The filter-graph inputs `OrangeLoaf` supports today. Denoise, eq, deblock, and
 /// HDR tonemap join this (in the same fixed position in `render`'s stage
 /// order, per notes/plan.md Appendix A) as their own UI lands.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

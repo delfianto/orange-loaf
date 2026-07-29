@@ -3,7 +3,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 
-/// Everything Voltaic currently knows how to show about a probed source
+/// Everything `OrangeLoaf` currently knows how to show about a probed source
 /// video. Deliberately small — only the fields the Convert screen actually
 /// renders today; more fields join this (and the ffprobe deserialization
 /// below) as the features that need them land.
@@ -337,7 +337,7 @@ fn run_ffprobe_format_and_streams(ffprobe: &Path, source: &str) -> Result<Ffprob
 }
 
 /// Probes a source video with ffprobe and returns the subset of its
-/// metadata Voltaic currently uses.
+/// metadata `OrangeLoaf` currently uses.
 ///
 /// # Errors
 ///
