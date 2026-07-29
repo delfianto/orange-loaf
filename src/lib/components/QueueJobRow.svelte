@@ -26,6 +26,26 @@
   const { job, index, total }: Props = $props();
 
   let expanded = $state(false);
+  // Checked by default, matching design/mockups/queue-screen.html — libx264/
+  // libx265's verbose stderr includes real per-frame NAL-unit trace lines
+  // that are rarely what someone wants to read while skimming for an error.
+  // `\bnal\b` (word-boundary, case-insensitive) rather than a plain
+  // substring match — a naive `.includes("nal")` would also hide any line
+  // containing "final"/"original"/etc.
+  // `checked`/`onchange` rather than `bind:checked`: a bare local `let`
+  // bound with `bind:checked` isn't visible to typescript-eslint's
+  // control-flow analysis as ever being reassigned, so it narrows this to
+  // the literal `true` and flags every read below as "always truthy" — an
+  // explicit reassignment site is enough to keep the type as `boolean`.
+  let hideNal: boolean = $state(true);
+  const NAL_LINE_PATTERN = /\bnal\b/i;
+
+  const visibleLog = $derived.by(() => {
+    const lines = queue.logs[job.id] ?? [];
+    return hideNal
+      ? lines.filter((line) => !NAL_LINE_PATTERN.test(line))
+      : lines;
+  });
 
   function sourceName(path: string): string {
     return path.split(/[\\/]/).pop() ?? path;
@@ -70,7 +90,7 @@
   });
 
   function copyLog(): void {
-    void navigator.clipboard.writeText((queue.logs[job.id] ?? []).join("\n"));
+    void navigator.clipboard.writeText(visibleLog.join("\n"));
   }
 </script>
 
@@ -261,22 +281,43 @@
       {/if}
       <div class="flex items-center justify-between">
         <span class="text-base-content/50 text-xs">Log</span>
-        <button
-          type="button"
-          class="text-base-content/50 hover:text-base-content flex items-center gap-1.5 text-[10px] font-medium"
-          onclick={copyLog}
-        >
-          <Copy class="h-3 w-3" />
-          Copy Log
-        </button>
+        <div class="flex items-center gap-3">
+          <label
+            class="text-base-content/60 flex items-center gap-1.5 text-[11px]"
+          >
+            <input
+              type="checkbox"
+              class="checkbox checkbox-xs"
+              checked={hideNal}
+              onchange={(
+                event: Event & { currentTarget: HTMLInputElement },
+              ) => {
+                hideNal = event.currentTarget.checked;
+              }}
+            />
+            Hide NAL unit messages
+          </label>
+          <button
+            type="button"
+            class="text-base-content/50 hover:text-base-content flex items-center gap-1.5 text-[10px] font-medium"
+            onclick={copyLog}
+          >
+            <Copy class="h-3 w-3" />
+            Copy Log
+          </button>
+        </div>
       </div>
       <div
         class="bg-base-100 border-hairline max-h-40 overflow-y-auto rounded-lg border p-3 font-mono text-[12px] leading-relaxed"
       >
-        {#if (queue.logs[job.id] ?? []).length === 0}
-          <p class="text-base-content/40">No log output yet.</p>
+        {#if visibleLog.length === 0}
+          <p class="text-base-content/40">
+            {(queue.logs[job.id] ?? []).length === 0
+              ? "No log output yet."
+              : "All log lines are hidden by the NAL filter above."}
+          </p>
         {:else}
-          {#each queue.logs[job.id] ?? [] as line, lineIndex (lineIndex)}
+          {#each visibleLog as line, lineIndex (lineIndex)}
             <div class="text-base-content/60">{line}</div>
           {/each}
         {/if}

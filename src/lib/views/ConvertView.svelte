@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import FolderOpen from "lucide-svelte/icons/folder-open";
   import Loader from "lucide-svelte/icons/loader-circle";
   import Copy from "lucide-svelte/icons/copy";
@@ -21,9 +22,37 @@
   import { queue } from "$lib/stores/queue.svelte";
   import { navigation } from "$lib/stores/navigation.svelte";
   import { config } from "$lib/stores/config.svelte";
+  import { profiles } from "$lib/stores/profiles.svelte";
   import AccordionSection from "$lib/components/AccordionSection.svelte";
   import CropOverlay from "$lib/components/CropOverlay.svelte";
   import TrackRow from "$lib/components/TrackRow.svelte";
+
+  onMount(() => {
+    void profiles.refresh();
+  });
+
+  let selectedProfileId = $state("");
+
+  // Mirrors ProfilesView.svelte's own `applyProfile` exactly, minus the
+  // navigation (we're already on Convert) — this picker is a one-shot
+  // action, not a persistent "currently applied profile" selector (nothing
+  // in `encode` state tracks that concept), so the select resets to its
+  // placeholder immediately after applying.
+  async function onProfilePickerChange(
+    event: Event & { currentTarget: HTMLSelectElement },
+  ): Promise<void> {
+    const id = event.currentTarget.value;
+    selectedProfileId = "";
+    const profile = profiles.profiles.find((p) => p.id === id);
+    if (!profile) {
+      return;
+    }
+    const sourceAudioTracks = video.info?.audioTracks ?? [];
+    const applied = await profiles.apply(profile.id, sourceAudioTracks);
+    encode.settings = applied.settings;
+    encode.filters = applied.filters;
+    encode.audioTracks = applied.audioTracks;
+  }
 
   type SectionId =
     "quality" | "audio" | "subtitles" | "filters" | "hdr" | "command";
@@ -176,6 +205,46 @@
       raw === "" ? null : Math.max(1, Math.round(Number(raw)));
   }
 
+  interface ResolutionPreset {
+    key: string;
+    label: string;
+    width: number | null;
+    height: number | null;
+  }
+
+  const RESOLUTION_PRESETS: ResolutionPreset[] = [
+    { key: "auto", label: "Auto (Source)", width: null, height: null },
+    { key: "4k", label: "3840×2160 (4K)", width: 3840, height: 2160 },
+    { key: "1440p", label: "2560×1440 (1440p)", width: 2560, height: 1440 },
+    { key: "1080p", label: "1920×1080 (1080p)", width: 1920, height: 1080 },
+    { key: "720p", label: "1280×720 (720p)", width: 1280, height: 720 },
+    { key: "480p", label: "854×480 (480p)", width: 854, height: 480 },
+  ];
+
+  // Derived (not its own field) so a resolution typed directly into the
+  // width/height inputs below that happens to match a preset is reflected
+  // here too, and one that doesn't just reads as "Custom" — there's nothing
+  // to keep in sync since the inputs stay the single source of truth.
+  const resolutionPreset = $derived(
+    RESOLUTION_PRESETS.find(
+      (p) =>
+        p.width === encode.filters.scaleWidth &&
+        p.height === encode.filters.scaleHeight,
+    )?.key ?? "custom",
+  );
+
+  function onResolutionPresetChange(
+    event: Event & { currentTarget: HTMLSelectElement },
+  ): void {
+    const preset = RESOLUTION_PRESETS.find(
+      (p) => p.key === event.currentTarget.value,
+    );
+    if (preset) {
+      encode.filters.scaleWidth = preset.width;
+      encode.filters.scaleHeight = preset.height;
+    }
+  }
+
   function rotateClockwise(): void {
     encode.filters.rotateDegrees = (encode.filters.rotateDegrees + 90) % 360;
   }
@@ -259,6 +328,21 @@
           <option value={enc.id}>{enc.label}</option>
         {/each}
       </select>
+      <select
+        class="select select-sm"
+        bind:value={selectedProfileId}
+        onchange={onProfilePickerChange}
+        disabled={profiles.profiles.length === 0}
+        aria-label="Apply profile"
+      >
+        <option value="" disabled>
+          {profiles.profiles.length === 0 ? "No profiles" : "Apply Profile…"}
+        </option>
+        {#each profiles.profiles as profile (profile.id)}
+          <option value={profile.id}>{profile.name}</option>
+        {/each}
+      </select>
+      <div class="bg-hairline h-5 w-px"></div>
       <button
         type="button"
         class="btn btn-ghost btn-sm"
@@ -697,6 +781,22 @@
               </p>
             {/if}
           </div>
+
+          <label class="form-control">
+            <span class="text-base-content/50 mb-1 text-xs">Resolution</span>
+            <select
+              class="select select-xs"
+              value={resolutionPreset}
+              onchange={onResolutionPresetChange}
+            >
+              {#each RESOLUTION_PRESETS as preset (preset.key)}
+                <option value={preset.key}>{preset.label}</option>
+              {/each}
+              <option value="custom" disabled={resolutionPreset !== "custom"}
+                >Custom</option
+              >
+            </select>
+          </label>
 
           <div class="grid grid-cols-2 gap-2">
             <label class="form-control">

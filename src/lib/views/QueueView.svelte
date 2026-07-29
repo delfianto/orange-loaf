@@ -51,6 +51,44 @@
     queue.jobs.filter((j) => j.status.state === "completed"),
   );
 
+  function formatDuration(totalSeconds: number): string {
+    const s = Math.max(0, Math.round(totalSeconds));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h > 0) {
+      return `${String(h)}h ${String(m)}m`;
+    }
+    if (m > 0) {
+      return `${String(m)}m ${String(sec)}s`;
+    }
+    return `${String(sec)}s`;
+  }
+
+  // Only estimable once something has actually run long enough to report a
+  // `speed` sample — there's no meaningful number to show before that (a
+  // fabricated "0s" or a source-duration-only guess would be more
+  // misleading than showing nothing), so this stays `null` until then.
+  // Queued jobs' own remaining time is extrapolated from the *running*
+  // job's observed speed, since none of them have a real sample of their
+  // own yet — an approximation, same as the mockup's own "Approx." label.
+  const aggregateEtaLabel = $derived.by(() => {
+    const runningJob = queue.jobs.find((j) => j.status.state === "running");
+    const speed = runningJob ? queue.progress[runningJob.id]?.speed : null;
+    if (!runningJob || !speed) {
+      return null;
+    }
+    const runningRemaining = Math.max(
+      0,
+      runningJob.durationSecs -
+        (queue.progress[runningJob.id]?.outTimeSecs ?? 0),
+    );
+    const queuedSecs = queue.jobs
+      .filter((j) => j.status.state === "queued")
+      .reduce((sum, j) => sum + j.durationSecs, 0);
+    return formatDuration((runningRemaining + queuedSecs) / speed);
+  });
+
   function segmentClass(status: JobStatus): string {
     switch (status.state) {
       case "completed":
@@ -139,9 +177,16 @@
           <span class="text-xs font-semibold">
             {completedJobs.length} of {queue.jobs.length} jobs complete
           </span>
-          {#if queue.paused}
-            <span class="text-warning text-xs font-medium">Paused</span>
-          {/if}
+          <div class="flex items-center gap-3">
+            {#if aggregateEtaLabel}
+              <span class="text-base-content/50 font-mono text-xs">
+                Approx. {aggregateEtaLabel} remaining
+              </span>
+            {/if}
+            {#if queue.paused}
+              <span class="text-warning text-xs font-medium">Paused</span>
+            {/if}
+          </div>
         </div>
         <div class="flex h-1.5 gap-1">
           {#each queue.jobs as job (job.id)}
