@@ -43,7 +43,7 @@
     <Zap class="text-primary-content h-5 w-5" />
   </div>
 
-  <ul class="flex flex-1 flex-col gap-2">
+  <ul class="flex w-full flex-1 flex-col items-center gap-2">
     {#each navItems as item (item.id)}
       <li class="tooltip tooltip-right" data-tip={item.label}>
         <button
@@ -67,20 +67,27 @@
         </button>
       </li>
     {/each}
-  </ul>
 
-  <div class="tooltip tooltip-right" data-tip={m.nav_settings()}>
-    <button
-      type="button"
-      class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-150 {navigation.current ===
-      'settings'
-        ? 'bg-primary/15 text-primary'
-        : 'text-base-content/70 hover:bg-base-300 hover:text-base-content'}"
-      onclick={() => (navigation.current = "settings")}
-      aria-current={navigation.current === "settings"}
-      aria-label={m.nav_settings()}
-    >
-      <SettingsIcon class="h-5 w-5" />
-    </button>
-  </div>
+    <!-- Settings is now an ordinary nav item pinned to the bottom (mt-auto),
+         inside the same list as the others. It used to be a <div> sibling
+         placed *after* this flex-1 <ul> — the one nav item built differently.
+         A user reported its click doing nothing in the desktop WebView (works
+         in Chromium); unifying the structure so it's identical to the working
+         items is the leading hypothesis for that WebKit-only difference, but
+         it's unverified against the desktop WebView from here. -->
+    <li class="tooltip tooltip-right mt-auto" data-tip={m.nav_settings()}>
+      <button
+        type="button"
+        class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-150 {navigation.current ===
+        'settings'
+          ? 'bg-primary/15 text-primary'
+          : 'text-base-content/70 hover:bg-base-300 hover:text-base-content'}"
+        onclick={() => (navigation.current = "settings")}
+        aria-current={navigation.current === "settings"}
+        aria-label={m.nav_settings()}
+      >
+        <SettingsIcon class="h-5 w-5" />
+      </button>
+    </li>
+  </ul>
 </nav>
