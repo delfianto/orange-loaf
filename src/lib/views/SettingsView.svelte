@@ -12,6 +12,7 @@
     type UiDensity,
   } from "$lib/stores/config.svelte";
   import { AUDIO_CODECS } from "$lib/stores/encode.svelte";
+  import { m, i18n, isLocale } from "$lib/i18n.svelte";
 
   const knownTools = [
     { key: "ffmpeg" as const, displayName: "FFmpeg" },
@@ -21,8 +22,10 @@
   // Must match src-tauri/src/config.rs's `default_naming_template()`.
   const DEFAULT_NAMING_TEMPLATE = "{source}-{encoder}";
 
-  // Labels only — actually retranslating the UI from this value is M13's
-  // job (notes/plan.md). Saved now so it's ready once that lands.
+  // A language's own name, in its own script, is conventionally left
+  // untranslated in language pickers (a French UI still lists "English",
+  // not "Anglais") — these are identity labels, not UI copy, so they don't
+  // go through `m.*`.
   const LANGUAGES = [
     { id: "en", label: "English" },
     { id: "es", label: "Español" },
@@ -31,12 +34,12 @@
     { id: "ja", label: "日本語" },
   ];
 
-  const LOG_LEVELS: { id: LogLevel; label: string }[] = [
-    { id: "error", label: "Error" },
-    { id: "warn", label: "Warn" },
-    { id: "info", label: "Info" },
-    { id: "debug", label: "Debug" },
-    { id: "trace", label: "Trace" },
+  const LOG_LEVELS: { id: LogLevel; label: () => string }[] = [
+    { id: "error", label: m.settings_log_level_error },
+    { id: "warn", label: m.settings_log_level_warn },
+    { id: "info", label: m.settings_log_level_info },
+    { id: "debug", label: m.settings_log_level_debug },
+    { id: "trace", label: m.settings_log_level_trace },
   ];
 
   const sectionHeading = "text-base-content/70 mb-3 text-sm font-medium";
@@ -99,14 +102,20 @@
     void config.persist();
   }
 
+  // The only setting that has a real, live, user-visible effect today
+  // (see i18n.svelte.ts) — every other field here just persists.
   function onLanguageChange(
     event: Event & { currentTarget: HTMLSelectElement },
   ): void {
     if (!config.data) {
       return;
     }
-    config.data.language = event.currentTarget.value;
+    const { value } = event.currentTarget;
+    config.data.language = value;
     void config.persist();
+    if (isLocale(value)) {
+      i18n.setLocale(value);
+    }
   }
 
   function onLogLevelChange(
@@ -132,13 +141,13 @@
 
 <div class="flex h-full flex-col">
   <header class="border-hairline flex h-14 shrink-0 items-center border-b px-6">
-    <h1 class="text-lg font-semibold">Settings</h1>
+    <h1 class="text-lg font-semibold">{m.settings_title()}</h1>
   </header>
 
   <div class="flex-1 overflow-y-auto p-6">
     <div class="mx-auto flex max-w-2xl flex-col gap-6">
       <section>
-        <h2 class={sectionHeading}>Detected External Programs</h2>
+        <h2 class={sectionHeading}>{m.settings_detected_programs()}</h2>
         <div class="{card} divide-hairline divide-y">
           {#each knownTools as known (known.key)}
             {@const status = tools.statuses.find(
@@ -167,7 +176,9 @@
                     </p>
                   {/if}
                 {:else}
-                  <p class="text-base-content/50 text-xs">Not found on PATH</p>
+                  <p class="text-base-content/50 text-xs">
+                    {m.settings_not_found_on_path()}
+                  </p>
                 {/if}
               </div>
 
@@ -177,7 +188,7 @@
                 onclick={() => tools.browseFor(known.key)}
               >
                 <FolderOpen class="h-3.5 w-3.5" />
-                Browse
+                {m.settings_browse()}
               </button>
             </div>
           {/each}
@@ -185,14 +196,14 @@
       </section>
 
       <section>
-        <h2 class={sectionHeading}>Output Naming</h2>
+        <h2 class={sectionHeading}>{m.settings_output_naming()}</h2>
         <div class="{card} p-4">
           {#if config.data}
             <label
               class="text-base-content/50 mb-1.5 block text-xs"
               for="naming-template"
             >
-              Naming Template
+              {m.settings_naming_template_label()}
             </label>
             <input
               id="naming-template"
@@ -224,7 +235,7 @@
               <span
                 class="text-base-content/50 shrink-0 text-[10px] font-semibold tracking-wider uppercase"
               >
-                Preview
+                {m.settings_preview_label()}
               </span>
               <span class="truncate font-mono text-xs">
                 {config.namingPreview || "—"}.mkv
@@ -236,7 +247,7 @@
               onclick={resetNamingTemplate}
             >
               <RotateCcw class="h-3 w-3" />
-              Reset to Default
+              {m.settings_reset_to_default()}
             </button>
           {:else}
             <Loader class="text-base-content/40 h-4 w-4 animate-spin" />
@@ -245,7 +256,7 @@
       </section>
 
       <section>
-        <h2 class={sectionHeading}>Audio Encoders</h2>
+        <h2 class={sectionHeading}>{m.settings_audio_encoders()}</h2>
         <div class="{card} divide-hairline divide-y">
           {#each AUDIO_CODECS as codec (codec.id)}
             <label class="flex items-center gap-3 px-4 py-2.5">
@@ -259,21 +270,22 @@
               />
               <span class="flex-1 text-sm">{codec.label}</span>
               {#if codec.lossless}
-                <span class="badge badge-xs badge-outline">lossless</span>
+                <span class="badge badge-xs badge-outline"
+                  >{m.settings_lossless()}</span
+                >
               {/if}
             </label>
           {/each}
         </div>
         <p class="text-base-content/50 mt-2 text-xs">
-          Unchecked codecs are hidden from the audio-conversion pickers on the
-          Convert and Profiles screens.
+          {m.settings_audio_encoders_hint()}
         </p>
       </section>
 
       <section>
-        <h2 class={sectionHeading}>Appearance</h2>
+        <h2 class={sectionHeading}>{m.settings_appearance()}</h2>
         <div class="{card} flex items-center justify-between p-4">
-          <span class="text-sm">UI Density</span>
+          <span class="text-sm">{m.settings_ui_density()}</span>
           <div class="join">
             <button
               type="button"
@@ -285,7 +297,7 @@
                 setDensity("comfortable");
               }}
             >
-              Comfortable
+              {m.settings_density_comfortable()}
             </button>
             <button
               type="button"
@@ -296,16 +308,16 @@
                 setDensity("compact");
               }}
             >
-              Compact
+              {m.settings_density_compact()}
             </button>
           </div>
         </div>
       </section>
 
       <section>
-        <h2 class={sectionHeading}>Language</h2>
+        <h2 class={sectionHeading}>{m.settings_language()}</h2>
         <div class="{card} flex items-center justify-between p-4">
-          <span class="text-sm">Display Language</span>
+          <span class="text-sm">{m.settings_display_language()}</span>
           <select
             class="select select-sm"
             value={config.data?.language}
@@ -317,15 +329,14 @@
           </select>
         </div>
         <p class="text-base-content/50 mt-2 text-xs">
-          Retranslating the interface from this setting lands in a later
-          milestone — it's saved now so it's ready once that's wired up.
+          {m.settings_language_hint()}
         </p>
       </section>
 
       <section>
-        <h2 class={sectionHeading}>Behavior</h2>
+        <h2 class={sectionHeading}>{m.settings_behavior()}</h2>
         <div class="{card} flex items-center justify-between p-4">
-          <span class="text-sm">Check for updates automatically</span>
+          <span class="text-sm">{m.settings_check_for_updates()}</span>
           <input
             type="checkbox"
             class="toggle toggle-sm"
@@ -336,16 +347,16 @@
       </section>
 
       <section>
-        <h2 class={sectionHeading}>Logging</h2>
+        <h2 class={sectionHeading}>{m.settings_logging()}</h2>
         <div class="{card} flex items-center justify-between p-4">
-          <span class="text-sm">Log Level</span>
+          <span class="text-sm">{m.settings_log_level()}</span>
           <select
             class="select select-sm"
             value={config.data?.logLevel}
             onchange={onLogLevelChange}
           >
             {#each LOG_LEVELS as level (level.id)}
-              <option value={level.id}>{level.label}</option>
+              <option value={level.id}>{level.label()}</option>
             {/each}
           </select>
         </div>

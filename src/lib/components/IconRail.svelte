@@ -7,6 +7,7 @@
   import Layers from "lucide-svelte/icons/layers";
   import SettingsIcon from "lucide-svelte/icons/settings";
   import { navigation, type ViewId } from "$lib/stores/navigation.svelte";
+  import { m } from "$lib/i18n.svelte";
 
   interface NavItem {
     id: ViewId;
@@ -15,10 +16,10 @@
   }
 
   const navItems: NavItem[] = [
-    { id: "convert", label: "Convert", icon: RefreshCw },
-    { id: "queue", label: "Queue", icon: ListOrdered },
-    { id: "history", label: "History", icon: HistoryIcon },
-    { id: "profiles", label: "Profiles", icon: Layers },
+    { id: "convert", label: m.nav_convert(), icon: RefreshCw },
+    { id: "queue", label: m.nav_queue(), icon: ListOrdered },
+    { id: "history", label: m.nav_history(), icon: HistoryIcon },
+    { id: "profiles", label: m.nav_profiles(), icon: Layers },
   ];
 </script>
 
@@ -50,7 +51,7 @@
     {/each}
   </ul>
 
-  <div class="tooltip tooltip-right" data-tip="Settings">
+  <div class="tooltip tooltip-right" data-tip={m.nav_settings()}>
     <button
       type="button"
       class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-150 {navigation.current ===
@@ -59,7 +60,7 @@
         : 'text-base-content/70 hover:bg-base-300 hover:text-base-content'}"
       onclick={() => (navigation.current = "settings")}
       aria-current={navigation.current === "settings"}
-      aria-label="Settings"
+      aria-label={m.nav_settings()}
     >
       <SettingsIcon class="h-5 w-5" />
     </button>

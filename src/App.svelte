@@ -3,6 +3,7 @@
   import IconRail from "$lib/components/IconRail.svelte";
   import { navigation } from "$lib/stores/navigation.svelte";
   import { config } from "$lib/stores/config.svelte";
+  import { i18n, isLocale } from "$lib/i18n.svelte";
   import ConvertView from "$lib/views/ConvertView.svelte";
   import QueueView from "$lib/views/QueueView.svelte";
   import HistoryView from "$lib/views/HistoryView.svelte";
@@ -21,23 +22,38 @@
     document.documentElement.dataset.density =
       config.data?.uiDensity ?? "comfortable";
   });
+
+  // Applies whatever language was already persisted (M12) the first time
+  // it becomes available, so a relaunch actually reopens in that language
+  // instead of always starting from paraglide's English default.
+  $effect(() => {
+    const language = config.data?.language;
+    if (language && isLocale(language) && language !== i18n.locale) {
+      i18n.setLocale(language);
+    }
+  });
 </script>
 
 <div
   class="bg-base-100 text-base-content flex h-screen w-screen overflow-hidden"
 >
-  <IconRail />
-  <main class="flex-1 overflow-hidden">
-    {#if navigation.current === "convert"}
-      <ConvertView />
-    {:else if navigation.current === "queue"}
-      <QueueView />
-    {:else if navigation.current === "history"}
-      <HistoryView />
-    {:else if navigation.current === "profiles"}
-      <ProfilesView />
-    {:else}
-      <SettingsView />
-    {/if}
-  </main>
+  <!-- Remounts on locale change so every `m.xxx()` call underneath
+       re-evaluates against the new locale — see i18n.svelte.ts's own doc
+       comment for why this is necessary at all. -->
+  {#key i18n.locale}
+    <IconRail />
+    <main class="flex-1 overflow-hidden">
+      {#if navigation.current === "convert"}
+        <ConvertView />
+      {:else if navigation.current === "queue"}
+        <QueueView />
+      {:else if navigation.current === "history"}
+        <HistoryView />
+      {:else if navigation.current === "profiles"}
+        <ProfilesView />
+      {:else}
+        <SettingsView />
+      {/if}
+    </main>
+  {/key}
 </div>
