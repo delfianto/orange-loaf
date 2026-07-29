@@ -36,6 +36,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::detect_tools,
+            commands::detect_nvenc,
             commands::set_tool_path,
             commands::probe_video,
             commands::generate_thumbnail,

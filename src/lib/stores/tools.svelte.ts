@@ -10,12 +10,21 @@ export interface ToolStatus {
 
 class ToolsState {
   statuses: ToolStatus[] = $state([]);
+  /** `null` until the first real check resolves — distinct from `false`
+   * (checked, and genuinely unavailable), so the status bar can show
+   * "checking…" rather than a premature "not available". */
+  nvencAvailable: boolean | null = $state(null);
   loading = $state(false);
 
   async refresh(): Promise<void> {
     this.loading = true;
     try {
-      this.statuses = await invoke<ToolStatus[]>("detect_tools");
+      const [statuses, nvencAvailable] = await Promise.all([
+        invoke<ToolStatus[]>("detect_tools"),
+        invoke<boolean>("detect_nvenc"),
+      ]);
+      this.statuses = statuses;
+      this.nvencAvailable = nvencAvailable;
     } finally {
       this.loading = false;
     }

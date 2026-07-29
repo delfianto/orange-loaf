@@ -71,6 +71,22 @@ pub fn detect_tools(state: State<'_, AppState>) -> Vec<ToolStatus> {
     detect_all(&state)
 }
 
+/// Whether ffmpeg's real, built-in `h264_nvenc` hardware encoder actually
+/// works on this machine right now (real GPU + driver, not just "ffmpeg was
+/// compiled with NVENC support") — powers the persistent status bar's
+/// "NVENC Available" indicator (`design/mockups/*.html`).
+///
+/// # Panics
+///
+/// Panics if the config mutex is poisoned (i.e. a prior command panicked
+/// while holding it).
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub fn detect_nvenc(state: State<'_, AppState>) -> bool {
+    let config = state.config.lock().expect("config mutex poisoned");
+    tools::ffmpeg_path(&config).is_ok_and(|ffmpeg| tools::detect_nvenc(&ffmpeg))
+}
+
 /// Sets a manually-chosen path for the given tool and persists it, then
 /// returns the freshly re-detected status of every tool.
 ///

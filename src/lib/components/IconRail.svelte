@@ -7,6 +7,7 @@
   import Layers from "lucide-svelte/icons/layers";
   import SettingsIcon from "lucide-svelte/icons/settings";
   import { navigation, type ViewId } from "$lib/stores/navigation.svelte";
+  import { queue } from "$lib/stores/queue.svelte";
   import { m } from "$lib/i18n.svelte";
 
   interface NavItem {
@@ -21,6 +22,16 @@
     { id: "history", label: m.nav_history(), icon: HistoryIcon },
     { id: "profiles", label: m.nav_profiles(), icon: Layers },
   ];
+
+  // Mirrors StatusBar.svelte's own "Queue: N Pending" count — kept as a
+  // separate local `$derived` rather than a shared store getter, matching
+  // how every view already computes its own filters over `queue.jobs`
+  // rather than centralizing them.
+  const pendingCount = $derived(
+    queue.jobs.filter(
+      (job) => job.status.state === "queued" || job.status.state === "running",
+    ).length,
+  );
 </script>
 
 <nav
@@ -37,7 +48,7 @@
       <li class="tooltip tooltip-right" data-tip={item.label}>
         <button
           type="button"
-          class="flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-150 {navigation.current ===
+          class="relative flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-150 {navigation.current ===
           item.id
             ? 'bg-primary/15 text-primary'
             : 'text-base-content/70 hover:bg-base-300 hover:text-base-content'}"
@@ -46,6 +57,13 @@
           aria-label={item.label}
         >
           <item.icon class="h-5 w-5" />
+          {#if item.id === "queue" && pendingCount > 0}
+            <span
+              class="bg-warning text-warning-content absolute top-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold"
+            >
+              {pendingCount}
+            </span>
+          {/if}
         </button>
       </li>
     {/each}

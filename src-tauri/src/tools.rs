@@ -110,6 +110,46 @@ pub fn detect_tool(
     }
 }
 
+/// Whether `ffmpeg`'s `h264_nvenc` encoder actually works right now — not
+/// just whether ffmpeg was *compiled* with NVENC support (which
+/// `-encoders`/`-hide_banner` would tell you, but says nothing about
+/// whether a real NVIDIA GPU + driver capable of using it are actually
+/// present). Deliberately checked the same way `detect_tool` checks
+/// ffmpeg/ffprobe themselves: by really invoking it, not by asking it to
+/// self-report — a 1-frame synthetic encode is cheap enough to run on
+/// every check and is the only way to know NVENC will actually work.
+///
+/// NVENC is ffmpeg's own built-in hardware encoder, distinct from (and far
+/// simpler than) the rigaya `NVEncC.exe` family the prior-art research
+/// covers (notes/plan.md §1.3) — that family is Windows-only external
+/// binaries and stays out of scope for the reasons already recorded for
+/// M5/M12; this is plain cross-platform `ffmpeg -c:v h264_nvenc`, which
+/// works identically on Linux (the actual target platform for hardware
+/// encoding in this project — see M14's Linux-only scope note) and
+/// Windows alike, given a real NVIDIA GPU.
+#[must_use]
+pub fn detect_nvenc(ffmpeg: &Path) -> bool {
+    Command::new(ffmpeg)
+        .args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=black:size=64x64:duration=0.1",
+            "-frames:v",
+            "1",
+            "-c:v",
+            "h264_nvenc",
+            "-f",
+            "null",
+            "-",
+        ])
+        .output()
+        .is_ok_and(|output| output.status.success())
+}
+
 #[cfg(test)]
 mod tests {
     use super::resolve_binary;
@@ -169,5 +209,17 @@ mod tests {
         let found = resolve_binary("definitely-not-a-real-binary-orangeloaf-test", None, None);
 
         assert_eq!(found, None);
+    }
+
+    /// Real, not mocked: this dev machine has no NVIDIA GPU, so a genuine
+    /// `h264_nvenc` encode attempt must fail and `detect_nvenc` must report
+    /// `false` — confirms the negative path actually works rather than
+    /// assuming it would. (The positive path — a real NVENC-capable
+    /// machine reporting `true` — isn't verifiable here for the same
+    /// reason; see notes/plan.md's scope note on this.)
+    #[test]
+    #[ignore = "requires system ffmpeg"]
+    fn detect_nvenc_is_false_on_a_machine_with_no_nvidia_gpu() {
+        assert!(!super::detect_nvenc(std::path::Path::new("ffmpeg")));
     }
 }
