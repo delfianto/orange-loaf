@@ -68,10 +68,15 @@
     "HDR10 mastering-display/light-level metadata is preserved automatically for HEVC (x265) and AV1 (SVT-AV1) outputs — there's nothing to configure here yet. HDR10+, tonemap, and the other advanced controls are still coming.";
 
   $effect(() => {
-    // A new source (or a cleared one) always gets a fresh, all-enabled
-    // track selection — see `resetTracksFrom`'s doc comment for why prior
-    // choices aren't carried over.
-    encode.resetTracksFrom(video.info);
+    // A new source (or a cleared one) gets a fresh track selection, narrowed
+    // by Settings' default audio/subtitle language include-lists (empty =
+    // keep all) — see `resetTracksFrom`'s doc comment for the fallback and
+    // for why prior choices aren't carried over.
+    encode.resetTracksFrom(
+      video.info,
+      config.data?.defaultAudioLanguages ?? [],
+      config.data?.defaultSubtitleLanguages ?? [],
+    );
   });
 
   $effect(() => {

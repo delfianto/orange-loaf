@@ -351,18 +351,20 @@ fn enqueue_job_impl<R: Runtime>(
     subtitle_tracks: Vec<SubtitleTrackSelection>,
     video_info: Option<VideoInfo>,
 ) -> Result<Queue, String> {
-    let naming_template = state
-        .config
-        .lock()
-        .expect("config mutex poisoned")
-        .output_naming_template
-        .clone();
+    let (naming_template, default_output_dir) = {
+        let config = state.config.lock().expect("config mutex poisoned");
+        (
+            config.output_naming_template.clone(),
+            config.default_output_dir.clone(),
+        )
+    };
     let output = build_output_path(
         &naming_template,
         &source,
         &settings,
         &filters,
         video_info.as_ref(),
+        default_output_dir.as_deref(),
     );
     let job = Job {
         id: uuid::Uuid::new_v4().to_string(),

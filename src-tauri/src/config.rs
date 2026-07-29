@@ -44,10 +44,10 @@ pub enum LogLevel {
 /// than pre-declaring an unused schema up front.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // `rename_all` is load-bearing, not cosmetic: the frontend's `Config`
-// interface (src/lib/stores/config.svelte.ts) reads camelCase keys. Without
-// it, `get_config`/`update_config` exchange snake_case JSON the frontend
+// interface (src/lib/stores/config.svelte.ts) reads `camelCase` keys. Without
+// it, `get_config`/`update_config` exchange `snake_case` JSON the frontend
 // can't read (every field but `language` comes back `undefined`), which
-// hard-crashes SettingsView on `disabledAudioCodecs.includes`. Every other
+// hard-crashes `SettingsView` on `disabledAudioCodecs.includes`. Every other
 // frontend-facing struct in this crate already sets this; Config was the
 // lone omission.
 #[serde(default, rename_all = "camelCase")]
@@ -56,11 +56,24 @@ pub struct Config {
     pub ffprobe_path: Option<PathBuf>,
     #[serde(default = "default_naming_template")]
     pub output_naming_template: String,
+    /// Where converted files are written. `None` (the default) writes each
+    /// output next to its source file — the historical behavior. A set
+    /// directory is used for both Convert and Queue jobs (see
+    /// `commands::build_output_path`).
+    pub default_output_dir: Option<PathBuf>,
     /// A *deny* list, not an allow list, deliberately: an empty list (the
     /// default) means "every codec `AUDIO_CODECS` knows about is enabled"
     /// without this Rust struct needing its own copy of that frontend
     /// table to default against — see notes/plan.md M12 scope note.
     pub disabled_audio_codecs: Vec<String>,
+    /// Default audio/subtitle track languages to keep when a source is first
+    /// loaded, as ISO-639 codes (e.g. `eng`, `jpn`). Empty (the default)
+    /// keeps every track — the historical behavior — which is why this is an
+    /// *include* list: handy for building a media-server archive that only
+    /// carries chosen languages. Applied frontend-side in `resetTracksFrom`;
+    /// persisted here.
+    pub default_audio_languages: Vec<String>,
+    pub default_subtitle_languages: Vec<String>,
     pub ui_density: UiDensity,
     /// A plain persisted tag today — retranslating the UI from it is M13's
     /// job (notes/plan.md), not this one's.
@@ -78,7 +91,10 @@ impl Default for Config {
             ffmpeg_path: None,
             ffprobe_path: None,
             output_naming_template: default_naming_template(),
+            default_output_dir: None,
             disabled_audio_codecs: Vec::new(),
+            default_audio_languages: Vec::new(),
+            default_subtitle_languages: Vec::new(),
             ui_density: UiDensity::default(),
             language: "en".to_owned(),
             check_for_updates: true,
@@ -142,9 +158,9 @@ mod tests {
         assert_eq!(config.log_level, LogLevel::Info);
     }
 
-    /// The frontend's `Config` interface reads camelCase keys; if this struct
-    /// ever serializes snake_case again, the whole Rust<->frontend config
-    /// bridge silently breaks and SettingsView crashes on render. Pin the
+    /// The frontend's `Config` interface reads `camelCase` keys; if this struct
+    /// ever serializes `snake_case` again, the whole Rust<->frontend config
+    /// bridge silently breaks and `SettingsView` crashes on render. Pin the
     /// exact keys the frontend depends on.
     #[test]
     fn config_serializes_with_camel_case_keys_the_frontend_reads() {
@@ -154,7 +170,10 @@ mod tests {
             "ffmpegPath",
             "ffprobePath",
             "outputNamingTemplate",
+            "defaultOutputDir",
             "disabledAudioCodecs",
+            "defaultAudioLanguages",
+            "defaultSubtitleLanguages",
             "uiDensity",
             "language",
             "checkForUpdates",

@@ -174,6 +174,39 @@ function selectionFromSubtitleTrack(
   return { index: track.index, enabled: true };
 }
 
+// Applies Settings' default track-language include-list when a source is
+// first loaded: keeps only tracks whose language is in `languages`
+// (case-insensitive). An empty list keeps everything (the historical
+// default). If a non-empty filter matches no track, fall back to the
+// source's default track (or the first) so a language filter never silently
+// strips every track of a kind — see config.svelte.ts / SettingsView.
+function applyLanguageDefaults<
+  Track extends { language: string | null; isDefault: boolean },
+  Selection extends { enabled: boolean },
+>(
+  tracks: Track[],
+  languages: string[],
+  toSelection: (track: Track) => Selection,
+): Selection[] {
+  const selections = tracks.map(toSelection);
+  if (languages.length === 0 || selections.length === 0) {
+    return selections;
+  }
+  const wanted = new Set(languages.map((code) => code.toLowerCase()));
+  selections.forEach((selection, index) => {
+    const language = tracks[index]?.language?.toLowerCase() ?? null;
+    selection.enabled = language != null && wanted.has(language);
+  });
+  if (!selections.some((selection) => selection.enabled)) {
+    const defaultIndex = tracks.findIndex((track) => track.isDefault);
+    const fallback = selections[defaultIndex === -1 ? 0 : defaultIndex];
+    if (fallback) {
+      fallback.enabled = true;
+    }
+  }
+  return selections;
+}
+
 // Mirrors src-tauri/src/job.rs's `EncodeStatus` wire shape exactly, including
 // "cancelled" — unreachable from this direct-encode path today (there's no
 // cancel button here yet), but genuinely reachable once a job runs through
@@ -222,17 +255,30 @@ class EncodeState {
   }
 
   /**
-   * Re-derives the track selection from a freshly-probed source, every
-   * track defaulting to enabled+copy — call whenever `video.info` changes
-   * (a new source loaded, or cleared). Previous per-track choices are
-   * deliberately not preserved across sources: track *count* and codec can
-   * differ entirely between files, so index-based carryover would silently
-   * apply stale settings to unrelated tracks.
+   * Re-derives the track selection from a freshly-probed source — call
+   * whenever `video.info` changes (a new source loaded, or cleared). Tracks
+   * default to enabled+copy, except that the optional `audioLanguages`/
+   * `subtitleLanguages` include-lists (from Settings) narrow which tracks
+   * start enabled; an empty list keeps every track. Previous per-track
+   * choices are deliberately not preserved across sources: track *count* and
+   * codec can differ entirely between files, so index-based carryover would
+   * silently apply stale settings to unrelated tracks.
    */
-  resetTracksFrom(info: VideoInfo | null): void {
-    this.audioTracks = info?.audioTracks.map(selectionFromAudioTrack) ?? [];
-    this.subtitleTracks =
-      info?.subtitleTracks.map(selectionFromSubtitleTrack) ?? [];
+  resetTracksFrom(
+    info: VideoInfo | null,
+    audioLanguages: string[] = [],
+    subtitleLanguages: string[] = [],
+  ): void {
+    this.audioTracks = applyLanguageDefaults(
+      info?.audioTracks ?? [],
+      audioLanguages,
+      selectionFromAudioTrack,
+    );
+    this.subtitleTracks = applyLanguageDefaults(
+      info?.subtitleTracks ?? [],
+      subtitleLanguages,
+      selectionFromSubtitleTrack,
+    );
   }
 
   private async ensureListening(): Promise<void> {

@@ -11,7 +11,13 @@ export interface Config {
   ffmpegPath: string | null;
   ffprobePath: string | null;
   outputNamingTemplate: string;
+  /** Default output directory; null/empty writes next to each source. */
+  defaultOutputDir: string | null;
   disabledAudioCodecs: string[];
+  /** ISO-639 codes to keep by default; empty = keep all (see SettingsView
+   * and `encode.resetTracksFrom`). */
+  defaultAudioLanguages: string[];
+  defaultSubtitleLanguages: string[];
   uiDensity: UiDensity;
   language: string;
   checkForUpdates: boolean;

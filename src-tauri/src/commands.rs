@@ -15,18 +15,23 @@ use crate::thumbnail;
 use crate::tools::{self, ToolStatus, detect_tool};
 
 /// Resolves the configured naming template (falling back to the built-in
-/// default if it's been cleared to blank) into a real output path next to
-/// the source. Replaces the old hardcoded `movie.mp4` -> `movie-orangeloaf.mkv`
-/// placeholder now that a real template system exists (notes/plan.md M12).
+/// default if it's been cleared to blank) into a real output path. Written
+/// into `default_output_dir` when one is configured, otherwise next to the
+/// source (the historical behavior). Replaces the old hardcoded `movie.mp4`
+/// -> `movie-orangeloaf.mkv` placeholder now that a real template system
+/// exists (notes/plan.md M12).
 pub(crate) fn build_output_path(
     template: &str,
     source: &str,
     settings: &EncoderKind,
     filters: &FilterSpec,
     video_info: Option<&VideoInfo>,
+    default_output_dir: Option<&Path>,
 ) -> String {
     let path = Path::new(source);
-    let parent = path.parent().unwrap_or_else(|| Path::new(""));
+    let parent = default_output_dir
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .unwrap_or_else(|| path.parent().unwrap_or_else(|| Path::new("")));
     let effective_template = if template.trim().is_empty() {
         crate::config::default_naming_template()
     } else {
@@ -191,12 +196,13 @@ pub fn start_encode(
     subtitle_tracks: Vec<SubtitleTrackSelection>,
     video_info: Option<VideoInfo>,
 ) -> Result<String, String> {
-    let (ffmpeg, ffprobe, naming_template) = {
+    let (ffmpeg, ffprobe, naming_template, default_output_dir) = {
         let config = state.config.lock().expect("config mutex poisoned");
         (
             tools::ffmpeg_path(&config)?,
             tools::ffprobe_path(&config).ok(),
             config.output_naming_template.clone(),
+            config.default_output_dir.clone(),
         )
     };
     let output = build_output_path(
@@ -205,6 +211,7 @@ pub fn start_encode(
         &settings,
         &filters,
         video_info.as_ref(),
+        default_output_dir.as_deref(),
     );
     let hdr10 = video_info.as_ref().and_then(|v| v.hdr10);
     let trimmed_duration_secs = trimmed_duration(duration_secs, &trim);
@@ -276,11 +283,12 @@ pub fn preview_command(
     subtitle_tracks: Vec<SubtitleTrackSelection>,
     video_info: Option<VideoInfo>,
 ) -> Result<Vec<Vec<String>>, String> {
-    let (ffmpeg, naming_template) = {
+    let (ffmpeg, naming_template, default_output_dir) = {
         let config = state.config.lock().expect("config mutex poisoned");
         (
             tools::ffmpeg_path(&config)?,
             config.output_naming_template.clone(),
+            config.default_output_dir.clone(),
         )
     };
     let output = build_output_path(
@@ -289,6 +297,7 @@ pub fn preview_command(
         &settings,
         &filters,
         video_info.as_ref(),
+        default_output_dir.as_deref(),
     );
     let hdr10 = video_info.as_ref().and_then(|v| v.hdr10);
     let ctx = EncodeContext {

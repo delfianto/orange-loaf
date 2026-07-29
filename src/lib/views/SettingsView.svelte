@@ -5,6 +5,7 @@
   import FolderOpen from "lucide-svelte/icons/folder-open";
   import Loader from "lucide-svelte/icons/loader-circle";
   import RotateCcw from "lucide-svelte/icons/rotate-ccw";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { tools } from "$lib/stores/tools.svelte";
   import {
     config,
@@ -137,6 +138,59 @@
     config.data.checkForUpdates = event.currentTarget.checked;
     void config.persist();
   }
+
+  async function browseOutputDir(): Promise<void> {
+    const dir = await open({
+      directory: true,
+      title: "Choose default output directory",
+    });
+    if (typeof dir === "string" && config.data) {
+      config.data.defaultOutputDir = dir;
+      void config.persist();
+    }
+  }
+
+  function clearOutputDir(): void {
+    if (!config.data) {
+      return;
+    }
+    config.data.defaultOutputDir = null;
+    void config.persist();
+  }
+
+  // Comma-separated ISO codes → normalized lowercase list; blank → [] ("keep
+  // all"). Committed on change, not per keystroke, so a half-typed value
+  // never fights the cursor.
+  function parseLanguages(raw: string): string[] {
+    return raw
+      .split(",")
+      .map((code) => code.trim().toLowerCase())
+      .filter((code) => code !== "");
+  }
+
+  function commitAudioLanguages(
+    event: Event & { currentTarget: HTMLInputElement },
+  ): void {
+    if (!config.data) {
+      return;
+    }
+    config.data.defaultAudioLanguages = parseLanguages(
+      event.currentTarget.value,
+    );
+    void config.persist();
+  }
+
+  function commitSubtitleLanguages(
+    event: Event & { currentTarget: HTMLInputElement },
+  ): void {
+    if (!config.data) {
+      return;
+    }
+    config.data.defaultSubtitleLanguages = parseLanguages(
+      event.currentTarget.value,
+    );
+    void config.persist();
+  }
 </script>
 
 <div class="flex h-full flex-col">
@@ -262,6 +316,45 @@
         </section>
 
         <section>
+          <h2 class={sectionHeading}>Default Output Directory</h2>
+          <div class="{card} p-4">
+            {#if config.data}
+              <div class="flex items-center gap-2">
+                <input
+                  class="input input-sm flex-1 font-mono"
+                  readonly
+                  placeholder="Next to the source file"
+                  value={config.data.defaultOutputDir ?? ""}
+                />
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-sm shrink-0"
+                  onclick={browseOutputDir}
+                >
+                  <FolderOpen class="h-3.5 w-3.5" />
+                  {m.settings_browse()}
+                </button>
+                {#if config.data.defaultOutputDir}
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-sm shrink-0"
+                    onclick={clearOutputDir}
+                  >
+                    <RotateCcw class="h-3 w-3" />
+                    {m.settings_reset_to_default()}
+                  </button>
+                {/if}
+              </div>
+              <p class="text-base-content/50 mt-2 text-xs">
+                Leave empty to write each converted file next to its source.
+              </p>
+            {:else}
+              <Loader class="text-base-content/40 h-4 w-4 animate-spin" />
+            {/if}
+          </div>
+        </section>
+
+        <section>
           <h2 class={sectionHeading}>{m.settings_audio_encoders()}</h2>
           <div class="{card} divide-hairline divide-y">
             {#each AUDIO_CODECS as codec (codec.id)}
@@ -289,8 +382,48 @@
         </section>
       </div>
 
-      <!-- Right: application preferences. -->
+      <!-- Right: default track languages, then application preferences. -->
       <div class="flex flex-col gap-6">
+        <section>
+          <h2 class={sectionHeading}>Default Track Languages</h2>
+          <div class="{card} flex flex-col gap-4 p-4">
+            {#if config.data}
+              <label class="form-control">
+                <span
+                  class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
+                  >Audio languages</span
+                >
+                <input
+                  class="input input-sm font-mono"
+                  placeholder="e.g. eng, jpn — empty keeps all"
+                  value={config.data.defaultAudioLanguages.join(", ")}
+                  onchange={commitAudioLanguages}
+                />
+              </label>
+              <label class="form-control">
+                <span
+                  class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
+                  >Subtitle languages</span
+                >
+                <input
+                  class="input input-sm font-mono"
+                  placeholder="e.g. eng — empty keeps all"
+                  value={config.data.defaultSubtitleLanguages.join(", ")}
+                  onchange={commitSubtitleLanguages}
+                />
+              </label>
+              <p class="text-base-content/50 text-xs">
+                Comma-separated ISO-639 codes. When a source loads, only
+                matching tracks are kept (empty = keep all). If none match, the
+                source's default track is kept. Great for media-server archives
+                that carry only chosen languages.
+              </p>
+            {:else}
+              <Loader class="text-base-content/40 h-4 w-4 animate-spin" />
+            {/if}
+          </div>
+        </section>
+
         <section>
           <h2 class={sectionHeading}>{m.settings_appearance()}</h2>
           <div class="{card} flex items-center justify-between p-4">
