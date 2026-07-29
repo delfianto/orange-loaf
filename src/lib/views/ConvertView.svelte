@@ -534,83 +534,90 @@
     class="grid flex-1 grid-cols-[3fr_2fr] items-start gap-6 overflow-y-auto p-6"
   >
     <div class="flex min-w-0 flex-col gap-4">
+      <!-- Preview card: the video area and the scrubber share one bordered
+           surface (mockup id=37), so the scrubber reads as part of the player
+           rather than a control detached below it. -->
       <div
-        class="bg-base-300 border-hairline relative flex aspect-video items-center justify-center overflow-hidden rounded-lg border"
+        class="bg-base-300 border-hairline flex flex-col overflow-hidden rounded-lg border"
       >
-        {#if video.probing}
-          <Loader class="text-base-content/40 h-6 w-6 animate-spin" />
-        {:else if video.thumbnail}
-          <img
-            src={video.thumbnail}
-            alt="Preview frame"
-            class="h-full w-full object-contain"
-          />
-          {#if video.thumbnailLoading}
-            <div
-              class="bg-base-300/60 absolute inset-0 flex items-center justify-center"
-            >
-              <Loader class="text-base-content/60 h-5 w-5 animate-spin" />
+        <div
+          class="relative flex aspect-video items-center justify-center bg-black"
+        >
+          {#if video.probing}
+            <Loader class="text-base-content/40 h-6 w-6 animate-spin" />
+          {:else if video.thumbnail}
+            <img
+              src={video.thumbnail}
+              alt="Preview frame"
+              class="h-full w-full object-contain"
+            />
+            {#if video.thumbnailLoading}
+              <div
+                class="bg-base-300/60 absolute inset-0 flex items-center justify-center"
+              >
+                <Loader class="text-base-content/60 h-5 w-5 animate-spin" />
+              </div>
+            {/if}
+          {:else}
+            <p class="text-base-content/50 text-sm">
+              {video.path
+                ? "Preview not available yet"
+                : "Choose a source to get started"}
+            </p>
+          {/if}
+          {#if video.info && encode.filters.crop}
+            {@const info = video.info}
+            {@const crop = encode.filters.crop}
+            <CropOverlay
+              sourceWidth={info.width}
+              sourceHeight={info.height}
+              {crop}
+              onChange={(next: Crop) => (encode.filters.crop = next)}
+            />
+          {/if}
+          {#if video.info}
+            <div class="pointer-events-none absolute top-3 left-3 flex gap-2">
+              <span
+                class="rounded-sm bg-black/60 px-2 py-1 font-mono text-[10px] text-white/80 backdrop-blur"
+                >{video.info.width} × {video.info.height}</span
+              >
+              <span
+                class="rounded-sm bg-black/60 px-2 py-1 font-mono text-[10px] text-white/80 uppercase backdrop-blur"
+                >{video.info.codecName}</span
+              >
+              <span
+                class="rounded-sm bg-black/60 px-2 py-1 font-mono text-[10px] text-white/80 backdrop-blur"
+                >{video.info.bitDepth}-bit</span
+              >
+              {#if video.info.hdr10}
+                <span
+                  class="bg-warning/20 text-warning rounded-sm px-2 py-1 font-mono text-[10px] backdrop-blur"
+                  >HDR10</span
+                >
+              {/if}
             </div>
           {/if}
-        {:else}
-          <p class="text-base-content/50 text-sm">
-            {video.path
-              ? "Preview not available yet"
-              : "Choose a source to get started"}
-          </p>
-        {/if}
-        {#if video.info && encode.filters.crop}
-          {@const info = video.info}
-          {@const crop = encode.filters.crop}
-          <CropOverlay
-            sourceWidth={info.width}
-            sourceHeight={info.height}
-            {crop}
-            onChange={(next: Crop) => (encode.filters.crop = next)}
-          />
-        {/if}
+        </div>
+
         {#if video.info}
-          <div class="pointer-events-none absolute top-3 left-3 flex gap-2">
-            <span
-              class="rounded-sm bg-black/60 px-2 py-1 font-mono text-[10px] text-white/80 backdrop-blur"
-              >{video.info.width} × {video.info.height}</span
-            >
-            <span
-              class="rounded-sm bg-black/60 px-2 py-1 font-mono text-[10px] text-white/80 uppercase backdrop-blur"
-              >{video.info.codecName}</span
-            >
-            <span
-              class="rounded-sm bg-black/60 px-2 py-1 font-mono text-[10px] text-white/80 backdrop-blur"
-              >{video.info.bitDepth}-bit</span
-            >
-            {#if video.info.hdr10}
-              <span
-                class="bg-warning/20 text-warning rounded-sm px-2 py-1 font-mono text-[10px] backdrop-blur"
-                >HDR10</span
-              >
-            {/if}
+          <div class="flex items-center gap-3 p-4">
+            <input
+              type="range"
+              min="0"
+              max={video.info.durationSecs}
+              step="0.1"
+              value={video.scrubTime}
+              onchange={onScrub}
+              class="range range-primary range-xs flex-1"
+            />
+            <span class="text-base-content/50 shrink-0 font-mono text-xs">
+              {formatTime(video.scrubTime)} / {formatTime(
+                video.info.durationSecs,
+              )}
+            </span>
           </div>
         {/if}
       </div>
-
-      {#if video.info}
-        <div class="flex items-center gap-3">
-          <input
-            type="range"
-            min="0"
-            max={video.info.durationSecs}
-            step="0.1"
-            value={video.scrubTime}
-            onchange={onScrub}
-            class="range range-primary range-xs flex-1"
-          />
-          <span class="text-base-content/50 shrink-0 font-mono text-xs">
-            {formatTime(video.scrubTime)} / {formatTime(
-              video.info.durationSecs,
-            )}
-          </span>
-        </div>
-      {/if}
 
       <!-- Transform strip: the mockup's Resolution / Rotate / Flip / Crop-tool
            row sits directly under the preview (these were previously buried in
