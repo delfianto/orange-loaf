@@ -238,11 +238,11 @@
 
   const RESOLUTION_PRESETS: ResolutionPreset[] = [
     { key: "auto", label: "Auto (Source)", width: null, height: null },
-    { key: "4k", label: "3840×2160 (4K)", width: 3840, height: 2160 },
-    { key: "1440p", label: "2560×1440 (1440p)", width: 2560, height: 1440 },
-    { key: "1080p", label: "1920×1080 (1080p)", width: 1920, height: 1080 },
-    { key: "720p", label: "1280×720 (720p)", width: 1280, height: 720 },
-    { key: "480p", label: "854×480 (480p)", width: 854, height: 480 },
+    { key: "4k", label: "2160p · 4K", width: 3840, height: 2160 },
+    { key: "1440p", label: "1440p · QHD", width: 2560, height: 1440 },
+    { key: "1080p", label: "1080p · FHD", width: 1920, height: 1080 },
+    { key: "720p", label: "720p · HD", width: 1280, height: 720 },
+    { key: "480p", label: "480p · SD", width: 854, height: 480 },
   ];
 
   // Derived (not its own field) so a resolution typed directly into the
@@ -257,10 +257,19 @@
     )?.key ?? "custom",
   );
 
-  // Reflects the explicit W×H only when it doesn't match a named preset, so
-  // the Custom box reads empty while a preset is selected (mockup behaviour).
+  // The strip shows only the preset select by default; the free-text W×H box
+  // appears when the user picks "Custom…" (or when loaded dimensions don't
+  // match any preset). Keeping the box hidden otherwise is what un-cramps the
+  // strip — the select gets the full cell instead of sharing it.
+  let customResolutionActive = $state(false);
+  const showCustomResolution = $derived(
+    customResolutionActive || resolutionPreset === "custom",
+  );
+  const resolutionSelectValue = $derived(
+    customResolutionActive ? "custom" : resolutionPreset,
+  );
   const customResolution = $derived(
-    resolutionPreset === "custom"
+    showCustomResolution
       ? `${encode.filters.scaleWidth ? String(encode.filters.scaleWidth) : ""}×${encode.filters.scaleHeight ? String(encode.filters.scaleHeight) : ""}`
       : "",
   );
@@ -278,10 +287,17 @@
   function onResolutionPresetChange(
     event: Event & { currentTarget: HTMLSelectElement },
   ): void {
+    if (event.currentTarget.value === "custom") {
+      // Reveal the W×H box and keep the current dimensions as the starting
+      // point; the select stays pinned to "Custom…" via resolutionSelectValue.
+      customResolutionActive = true;
+      return;
+    }
     const preset = RESOLUTION_PRESETS.find(
       (p) => p.key === event.currentTarget.value,
     );
     if (preset) {
+      customResolutionActive = false;
       encode.filters.scaleWidth = preset.width;
       encode.filters.scaleHeight = preset.height;
     }
@@ -628,27 +644,25 @@
             class="text-base-content/50 text-[10px] font-semibold tracking-wider uppercase"
             >Resolution</span
           >
-          <div class="flex gap-1">
-            <select
-              class="select select-sm flex-1"
-              value={resolutionPreset}
-              onchange={onResolutionPresetChange}
-            >
-              {#each RESOLUTION_PRESETS as preset (preset.key)}
-                <option value={preset.key}>{preset.label}</option>
-              {/each}
-              <option value="custom" disabled={resolutionPreset !== "custom"}
-                >Custom</option
-              >
-            </select>
+          <select
+            class="select select-sm w-full"
+            value={resolutionSelectValue}
+            onchange={onResolutionPresetChange}
+          >
+            {#each RESOLUTION_PRESETS as preset (preset.key)}
+              <option value={preset.key}>{preset.label}</option>
+            {/each}
+            <option value="custom">Custom…</option>
+          </select>
+          {#if showCustomResolution}
             <input
               type="text"
-              placeholder="Custom"
-              class="input input-sm w-24 font-mono"
+              placeholder="e.g. 1920×1080"
+              class="input input-sm w-full font-mono"
               value={customResolution}
               onchange={onCustomResolutionChange}
             />
-          </div>
+          {/if}
         </div>
 
         <div class="flex flex-col gap-2">
