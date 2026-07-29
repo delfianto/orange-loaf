@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use tokio::sync::oneshot;
 
 use crate::config::Config;
+use crate::history::History;
 use crate::profiles::Profiles;
 use crate::queue::Queue;
 
@@ -20,6 +21,7 @@ pub struct AppState {
     /// the queue runs strictly sequentially.
     pub running_cancel: Mutex<Option<(String, oneshot::Sender<()>)>>,
     pub profiles: Mutex<Profiles>,
+    pub history: Mutex<History>,
 }
 
 impl AppState {
@@ -29,6 +31,7 @@ impl AppState {
             queue: Mutex::new(Queue::load()),
             running_cancel: Mutex::new(None),
             profiles: Mutex::new(Profiles::load()),
+            history: Mutex::new(History::load()),
         }
     }
 }

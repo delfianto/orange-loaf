@@ -2,6 +2,7 @@ mod commands;
 mod config;
 mod encoders;
 mod filters;
+mod history;
 mod job;
 mod probe;
 mod profiles;
@@ -51,6 +52,10 @@ pub fn run() {
             profiles::duplicate_profile,
             profiles::delete_profile,
             profiles::apply_profile,
+            history::list_history,
+            history::delete_history_entry,
+            history::clear_history,
+            history::apply_history_entry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -140,18 +140,46 @@ fn emit_snapshot<R: Runtime>(app: &AppHandle<R>, state: &AppState) {
 
 fn finish_job<R: Runtime>(app: &AppHandle<R>, job_id: &str, status: JobStatus) {
     let state = app.state::<AppState>();
-    {
+    let finished_job = {
         let mut queue = state.queue.lock().expect("queue mutex poisoned");
-        if let Some(job) = queue.jobs.iter_mut().find(|j| j.id == job_id) {
+        let job = queue.jobs.iter_mut().find(|j| j.id == job_id);
+        let finished_job = job.as_ref().map(|j| ((*j).clone(), status.clone()));
+        if let Some(job) = job {
             job.status = status;
         }
         let _ = queue.save();
-    }
+        finished_job
+    };
     *state
         .running_cancel
         .lock()
         .expect("running_cancel mutex poisoned") = None;
     emit_snapshot(app, &state);
+
+    // History records completed/failed queue jobs only — a job that was
+    // *cancelled* was intentionally aborted, not an outcome worth keeping a
+    // record of (notes/plan.md M11 scope note).
+    if let Some((job, status)) = finished_job {
+        let history_status = match status {
+            JobStatus::Completed => Some(crate::history::HistoryStatus::Completed),
+            JobStatus::Failed { message } => {
+                Some(crate::history::HistoryStatus::Failed { message })
+            }
+            JobStatus::Queued | JobStatus::Running | JobStatus::Cancelled => None,
+        };
+        if let Some(history_status) = history_status {
+            let thumbnail_at_secs = job.trim.start_time.unwrap_or(0.0);
+            crate::history::record(
+                app,
+                job.source,
+                job.output,
+                job.settings,
+                job.filters,
+                history_status,
+                thumbnail_at_secs,
+            );
+        }
+    }
 }
 
 /// Starts the next `Queued` job, if nothing is already running and the
@@ -517,6 +545,7 @@ mod tests {
             queue: Mutex::new(Queue::default()),
             running_cancel: Mutex::new(None),
             profiles: Mutex::new(crate::profiles::Profiles::default()),
+            history: Mutex::new(crate::history::History::default()),
         }
     }
 
@@ -529,6 +558,7 @@ mod tests {
     /// job: jobs run one at a time, in order, and both produce real output.
     #[test]
     #[ignore = "requires system ffmpeg"]
+    #[allow(clippy::too_many_lines)]
     fn real_queue_runs_two_jobs_sequentially_and_produces_real_output_files() {
         let app = tauri::test::mock_app();
         app.manage(mock_state());
@@ -593,17 +623,59 @@ mod tests {
         }
 
         let state = handle.state::<AppState>();
-        let queue = state.queue.lock().expect("queue mutex poisoned");
-        for job in &queue.jobs {
-            assert!(
-                matches!(job.status, JobStatus::Completed),
-                "job {} ended as {:?}",
-                job.id,
-                job.status
-            );
+        {
+            let queue = state.queue.lock().expect("queue mutex poisoned");
+            for job in &queue.jobs {
+                assert!(
+                    matches!(job.status, JobStatus::Completed),
+                    "job {} ended as {:?}",
+                    job.id,
+                    job.status
+                );
+            }
         }
         assert!(std::path::Path::new(&output1).exists());
         assert!(std::path::Path::new(&output2).exists());
+
+        // Both completions should have gone through `finish_job` ->
+        // `history::record` — verify the actual recorded state, not just
+        // that the queue itself progressed (a silently-failed history hook
+        // wouldn't otherwise be caught by this test at all). `history` is a
+        // *separate* mutex from `queue`, updated a moment after the queue
+        // status itself (see `finish_job`), so this needs its own short
+        // poll rather than assuming it's already settled the instant the
+        // queue reports both jobs done.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let recorded = state
+                .history
+                .lock()
+                .expect("history mutex poisoned")
+                .entries
+                .len();
+            if recorded == 2 {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "expected 2 history entries within 5s of queue completion, got {recorded}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+
+        let history = state.history.lock().expect("history mutex poisoned");
+        assert!(
+            history
+                .entries
+                .iter()
+                .all(|e| matches!(e.status, crate::history::HistoryStatus::Completed))
+        );
+        assert!(
+            history
+                .entries
+                .iter()
+                .all(|e| e.source == "tests/fixtures/sdr_8bit.mp4")
+        );
 
         let _ = std::fs::remove_file(&output1);
         let _ = std::fs::remove_file(&output2);
