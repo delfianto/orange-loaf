@@ -4,6 +4,8 @@
   import Clock from "lucide-svelte/icons/clock";
   import CheckCircle2 from "lucide-svelte/icons/check-circle-2";
   import AlertCircle from "lucide-svelte/icons/alert-circle";
+  import ChevronDown from "lucide-svelte/icons/chevron-down";
+  import ChevronRight from "lucide-svelte/icons/chevron-right";
   import Pause from "lucide-svelte/icons/pause";
   import Play from "lucide-svelte/icons/play";
   import ListOrdered from "lucide-svelte/icons/list-ordered";
@@ -26,7 +28,10 @@
       kind: "queued",
       title: "Queued",
       icon: Clock,
-      iconClass: "text-info",
+      // Muted, not the accent (`text-info` is the same indigo): "queued /
+      // pending" is a muted-gray state per design-system.md, and the single
+      // accent is rationed to primary actions/progress, not group icons.
+      iconClass: "text-base-content/50",
       jobs: queue.jobs.filter((j) => j.status.state === "queued"),
     },
     {
@@ -50,6 +55,13 @@
   const completedJobs = $derived(
     queue.jobs.filter((j) => j.status.state === "completed"),
   );
+
+  // Per-group collapse (mockup's chevron on each status heading). Keyed by
+  // section kind; absent/false = expanded, so groups start open.
+  let collapsedGroups: Record<string, boolean> = $state({});
+  function toggleGroup(kind: string): void {
+    collapsedGroups = { ...collapsedGroups, [kind]: !collapsedGroups[kind] };
+  }
 
   function formatDuration(totalSeconds: number): string {
     const s = Math.max(0, Math.round(totalSeconds));
@@ -129,7 +141,9 @@
   >
     <div class="flex items-center gap-2">
       <h1 class="text-lg font-semibold">Queue</h1>
-      <span class="badge badge-sm badge-outline">
+      <span
+        class="text-base-content/50 ml-1 rounded bg-white/5 px-2 py-0.5 text-xs font-medium"
+      >
         {queue.jobs.length}
         {queue.jobs.length === 1 ? "job" : "jobs"}
       </span>
@@ -220,8 +234,21 @@
       {#each sections as sectionData (sectionData.kind)}
         {#if sectionData.jobs.length > 0}
           {@const SectionIcon = sectionData.icon}
+          {@const collapsed = collapsedGroups[sectionData.kind] ?? false}
           <section class="mb-6 flex flex-col">
-            <div class="mb-1 flex items-center gap-2 px-1 py-2">
+            <button
+              type="button"
+              class="mb-1 flex w-full items-center gap-2 px-1 py-2 text-left"
+              onclick={() => {
+                toggleGroup(sectionData.kind);
+              }}
+              aria-expanded={!collapsed}
+            >
+              {#if collapsed}
+                <ChevronRight class="text-base-content/50 h-3.5 w-3.5" />
+              {:else}
+                <ChevronDown class="text-base-content/50 h-3.5 w-3.5" />
+              {/if}
               <SectionIcon class="h-3.5 w-3.5 {sectionData.iconClass}" />
               <span
                 class="text-base-content/80 text-[11px] font-semibold tracking-wider uppercase"
@@ -231,14 +258,20 @@
               <span class="text-base-content/50 text-[11px]">
                 {sectionData.jobs.length}
               </span>
-            </div>
-            <div
-              class="bg-base-300 border-hairline divide-hairline divide-y rounded-md border"
-            >
-              {#each sectionData.jobs as job, i (jobKey(job))}
-                <QueueJobRow {job} index={i} total={sectionData.jobs.length} />
-              {/each}
-            </div>
+            </button>
+            {#if !collapsed}
+              <div
+                class="bg-base-300 border-hairline divide-hairline divide-y rounded-md border"
+              >
+                {#each sectionData.jobs as job, i (jobKey(job))}
+                  <QueueJobRow
+                    {job}
+                    index={i}
+                    total={sectionData.jobs.length}
+                  />
+                {/each}
+              </div>
+            {/if}
           </section>
         {/if}
       {/each}

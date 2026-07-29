@@ -126,6 +126,23 @@
     void navigator.clipboard.writeText(visibleLog.join("\n"));
   }
 
+  // Per-line log colouring, matching the mockup: warnings amber, errors red,
+  // and the periodic `frame=…` progress summary brightened above the muted
+  // per-frame trace. Whole-word matches so a path containing "error" in a
+  // normal trace line doesn't light up the whole log.
+  function logLineClass(line: string): string {
+    if (/\berror\b/i.test(line)) {
+      return "text-error";
+    }
+    if (/\bwarning\b/i.test(line)) {
+      return "text-warning";
+    }
+    if (line.startsWith("frame=")) {
+      return "text-base-content/80";
+    }
+    return "text-base-content/60";
+  }
+
   // Only queued rows are draggable (matching the existing Move Up/Down
   // buttons' own precedent — reordering a running/finished job isn't
   // meaningful), so `dropPosition` only ever matters while both the
@@ -213,11 +230,27 @@
         <XCircle class="text-error h-4 w-4 shrink-0" />
       {/if}
 
-      <span class="max-w-md shrink truncate text-sm font-medium">
+      <span
+        class="max-w-md shrink truncate text-sm font-medium {job.status
+          .state === 'completed'
+          ? 'text-base-content/50'
+          : ''}"
+      >
         {sourceName(job.source)}
       </span>
-      <span class="badge badge-sm badge-outline shrink-0 font-mono uppercase">
-        {encoderLabel(job.settings.name)}
+      <span class="flex shrink-0 items-center gap-1.5">
+        <span
+          class="border-hairline text-base-content/70 rounded border bg-white/5 px-1.5 py-0.5 font-mono text-[9px] uppercase"
+        >
+          {encoderLabel(job.settings.name)}
+        </span>
+        {#if job.videoInfo?.hdr10}
+          <span
+            class="border-hairline text-base-content/70 rounded border bg-white/5 px-1.5 py-0.5 font-mono text-[9px] uppercase"
+          >
+            HDR10
+          </span>
+        {/if}
       </span>
     </button>
 
@@ -308,13 +341,13 @@
       {:else if job.status.state === "completed"}
         <button
           type="button"
-          class="btn btn-ghost btn-xs btn-square"
+          class="btn btn-ghost btn-xs"
           onclick={() => {
             void revealItemInDir(job.output);
           }}
-          aria-label="Open containing folder"
         >
           <FolderSearch class="h-3.5 w-3.5" />
+          Open Folder
         </button>
         <button
           type="button"
@@ -417,7 +450,7 @@
           </p>
         {:else}
           {#each visibleLog as line, lineIndex (lineIndex)}
-            <div class="text-base-content/60">{line}</div>
+            <div class={logLineClass(line)}>{line}</div>
           {/each}
         {/if}
       </div>
