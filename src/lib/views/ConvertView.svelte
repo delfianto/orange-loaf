@@ -3,9 +3,12 @@
   import FolderOpen from "lucide-svelte/icons/folder-open";
   import Loader from "lucide-svelte/icons/loader-circle";
   import Copy from "lucide-svelte/icons/copy";
+  import Minus from "lucide-svelte/icons/minus";
+  import Plus from "lucide-svelte/icons/plus";
   import RotateCw from "lucide-svelte/icons/rotate-cw";
-  import FlipHorizontal from "lucide-svelte/icons/flip-horizontal-2";
-  import FlipVertical from "lucide-svelte/icons/flip-vertical-2";
+  import RotateCcw from "lucide-svelte/icons/rotate-ccw";
+  import CropIcon from "lucide-svelte/icons/crop";
+  import Video from "lucide-svelte/icons/video";
   import { video } from "$lib/stores/video.svelte";
   import {
     encode,
@@ -58,14 +61,11 @@
     "quality" | "audio" | "subtitles" | "filters" | "hdr" | "command";
   let openSection: SectionId = $state("quality");
 
-  // "Filters" and "Audio"/"Subtitles" are now real; only HDR remains a stub.
-  const postFilterStubs: { id: SectionId; title: string; note: string }[] = [
-    {
-      id: "hdr",
-      title: "HDR / Advanced",
-      note: "HDR10 mastering-display/light-level metadata is preserved automatically for HEVC (x265) and AV1 (SVT-AV1) outputs — there's nothing to configure here yet. HDR10+, tonemap, and the other advanced controls are still coming.",
-    },
-  ];
+  // HDR/Advanced is still a stub — HDR10 metadata is preserved automatically,
+  // so there's nothing to configure yet (the collapsed row still surfaces the
+  // detected HDR10 signaling via a summary + badge).
+  const HDR_NOTE =
+    "HDR10 mastering-display/light-level metadata is preserved automatically for HEVC (x265) and AV1 (SVT-AV1) outputs — there's nothing to configure here yet. HDR10+, tonemap, and the other advanced controls are still coming.";
 
   $effect(() => {
     // A new source (or a cleared one) always gets a fresh, all-enabled
@@ -157,10 +157,12 @@
     action.downmix = raw === "" ? null : Number(raw);
   }
 
-  function onToggleCrop(
-    event: Event & { currentTarget: HTMLInputElement },
-  ): void {
-    if (!event.currentTarget.checked) {
+  // The strip's "Open Crop Tool" toggles crop on/off: enabling seeds a
+  // 10%-inset rectangle (the preview's drag handles then refine it), disabling
+  // clears it. Exact pixel values remain editable in the Filters section while
+  // crop is active.
+  function toggleCropTool(): void {
+    if (encode.filters.crop) {
       encode.filters.crop = null;
       return;
     }
@@ -196,13 +198,35 @@
     );
   }
 
-  function onScaleInput(
-    dimension: "scaleWidth" | "scaleHeight",
+  // Parses the strip's free-text "Custom" resolution box: accepts "1920x1080",
+  // "1920×1080", "1920 1080", or a lone width. Blank clears both dimensions
+  // (auto/source). Committed on change (not per keystroke) so a half-typed
+  // value never fights the cursor.
+  function onCustomResolutionChange(
     event: Event & { currentTarget: HTMLInputElement },
   ): void {
-    const raw = event.currentTarget.value;
-    encode.filters[dimension] =
-      raw === "" ? null : Math.max(1, Math.round(Number(raw)));
+    const raw = event.currentTarget.value.trim();
+    if (raw === "") {
+      encode.filters.scaleWidth = null;
+      encode.filters.scaleHeight = null;
+      return;
+    }
+    const parts = raw.split(/[×xX,\s]+/).filter((part) => part !== "");
+    const w = parts[0] != null ? Math.round(Number(parts[0])) : NaN;
+    const h = parts[1] != null ? Math.round(Number(parts[1])) : NaN;
+    encode.filters.scaleWidth = Number.isFinite(w) && w > 0 ? w : null;
+    encode.filters.scaleHeight = Number.isFinite(h) && h > 0 ? h : null;
+  }
+
+  // Flip is a single select (mockup parity) over the two independent
+  // horizontal/vertical booleans; "both" keeps the underlying capability of
+  // combining them (a 180° mirror) rather than dropping it.
+  function onFlipChange(
+    event: Event & { currentTarget: HTMLSelectElement },
+  ): void {
+    const value = event.currentTarget.value;
+    encode.filters.horizontalFlip = value === "h" || value === "both";
+    encode.filters.verticalFlip = value === "v" || value === "both";
   }
 
   interface ResolutionPreset {
@@ -233,6 +257,24 @@
     )?.key ?? "custom",
   );
 
+  // Reflects the explicit W×H only when it doesn't match a named preset, so
+  // the Custom box reads empty while a preset is selected (mockup behaviour).
+  const customResolution = $derived(
+    resolutionPreset === "custom"
+      ? `${encode.filters.scaleWidth ? String(encode.filters.scaleWidth) : ""}×${encode.filters.scaleHeight ? String(encode.filters.scaleHeight) : ""}`
+      : "",
+  );
+
+  const flipValue = $derived(
+    encode.filters.horizontalFlip && encode.filters.verticalFlip
+      ? "both"
+      : encode.filters.horizontalFlip
+        ? "h"
+        : encode.filters.verticalFlip
+          ? "v"
+          : "none",
+  );
+
   function onResolutionPresetChange(
     event: Event & { currentTarget: HTMLSelectElement },
   ): void {
@@ -247,6 +289,10 @@
 
   function rotateClockwise(): void {
     encode.filters.rotateDegrees = (encode.filters.rotateDegrees + 90) % 360;
+  }
+
+  function rotateCounterClockwise(): void {
+    encode.filters.rotateDegrees = (encode.filters.rotateDegrees + 270) % 360;
   }
 
   function onTrimInput(
@@ -288,89 +334,165 @@
   }
 
   const isRunning = $derived(encode.status?.state === "running");
+
+  // --- Quality panel (mockup parity) --------------------------------------
+
+  // CRF ceiling differs by codec: SVT-AV1 spans 0–63, x264/x265 span 0–51.
+  const crfMax = $derived(encode.settings.name === "svtAv1" ? 63 : 51);
+
+  // The output vertical resolution the encode will actually produce, shown as
+  // a hint next to the CRF value. Prefer an explicit scale height; else derive
+  // one from an explicit scale width against the source aspect ratio; else
+  // fall back to the source height. Null (hidden) until a source is probed.
+  const outputHeight = $derived.by(() => {
+    const h = encode.filters.scaleHeight;
+    if (h != null) {
+      return h;
+    }
+    const w = encode.filters.scaleWidth;
+    const info = video.info;
+    if (w != null && info) {
+      return Math.round((w * info.height) / info.width);
+    }
+    return info?.height ?? null;
+  });
+
+  // x265 is the only encoder exposing a pixel-format (bit-depth) choice; the
+  // header pill mirrors the Bit Depth / Pixel Format select below it.
+  const bitDepthLabel = $derived(
+    encode.settings.name === "x265"
+      ? encode.settings.pixFmt.includes("10")
+        ? "10-bit"
+        : "8-bit"
+      : null,
+  );
+
+  // Both x265 and x264 expose ffmpeg's classic -pass 2-pass mechanism; the
+  // pill and toggle only exist for those two (SVT-AV1/VideoToolbox have no
+  // such field). See src-tauri/src/encoders/x265.rs — two_pass only splits
+  // into two steps when a target bitrate is also set, so the toggle is
+  // disabled (and the hint changes) while in CRF mode.
+  const supportsTwoPass = $derived(
+    encode.settings.name === "x265" || encode.settings.name === "x264",
+  );
+  const twoPassOn = $derived(
+    (encode.settings.name === "x265" || encode.settings.name === "x264") &&
+      encode.settings.twoPass,
+  );
+  const crfMode = $derived(
+    "targetBitrateKbps" in encode.settings &&
+      encode.settings.targetBitrateKbps == null,
+  );
+
+  function stepCrf(delta: number): void {
+    if ("crf" in encode.settings) {
+      encode.settings.crf = Math.min(
+        crfMax,
+        Math.max(0, encode.settings.crf + delta),
+      );
+    }
+  }
+
+  // Switching modes preserves the last bitrate (defaulting to 4000 kbps the
+  // first time) — the same contract the old CRF/Bitrate join buttons had.
+  function setBitrateMode(on: boolean): void {
+    if (!("targetBitrateKbps" in encode.settings)) {
+      return;
+    }
+    encode.settings.targetBitrateKbps = on
+      ? (encode.settings.targetBitrateKbps ?? 4000)
+      : null;
+  }
+
+  const PILL_ACTIVE = "border-primary/20 bg-primary/10 text-primary";
+  const PILL_MUTED = "border-hairline bg-white/5 text-base-content/50";
 </script>
 
 <div class="flex h-full flex-col">
   <header
     class="border-hairline flex h-14 shrink-0 items-center justify-between border-b px-6"
   >
-    <div class="min-w-0">
+    <div class="flex min-w-0 items-center gap-4">
       {#if video.path}
-        <div class="flex items-center gap-2">
-          <p class="truncate text-sm font-medium">{sourceName(video.path)}</p>
-          {#if video.info}
-            <span class="badge badge-sm badge-outline font-mono"
-              >{video.info.width}×{video.info.height}</span
+        <div class="flex min-w-0 items-center gap-3">
+          <Video class="text-base-content/50 h-5 w-5 shrink-0" />
+          <div class="flex min-w-0 flex-col">
+            <span class="truncate text-sm leading-tight font-medium"
+              >{sourceName(video.path)}</span
             >
-            <span class="badge badge-sm badge-outline font-mono uppercase"
-              >{video.info.codecName}</span
+            <span
+              class="text-base-content/50 truncate text-[11px] tracking-wider uppercase"
+              >Source File • {video.path}</span
             >
-            <span class="badge badge-sm badge-outline"
-              >{video.info.bitDepth}-bit</span
-            >
-            {#if video.info.hdr10}
-              <span class="badge badge-sm badge-warning badge-outline"
-                >HDR10</span
-              >
-            {/if}
-          {/if}
+          </div>
         </div>
-        <p class="text-base-content/50 truncate text-xs">{video.path}</p>
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm shrink-0"
+          onclick={() => video.choose()}
+        >
+          <FolderOpen class="h-4 w-4" />
+          Change Source
+        </button>
       {:else}
-        <p class="text-base-content/50 text-sm">No source selected</p>
+        <span class="text-base-content/50 text-sm">No source selected</span>
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          onclick={() => video.choose()}
+        >
+          <FolderOpen class="h-4 w-4" />
+          Choose Source
+        </button>
       {/if}
     </div>
-    <div class="flex items-center gap-3">
-      <select
-        class="select select-sm"
-        value={encode.settings.name}
-        onchange={onEncoderChange}
-      >
-        {#each ENCODER_NAMES as enc (enc.id)}
-          <option value={enc.id}>{enc.label}</option>
-        {/each}
-      </select>
-      <select
-        class="select select-sm"
-        bind:value={selectedProfileId}
-        onchange={onProfilePickerChange}
-        disabled={profiles.profiles.length === 0}
-        aria-label="Apply profile"
-      >
-        <option value="" disabled>
-          {profiles.profiles.length === 0 ? "No profiles" : "Apply Profile…"}
-        </option>
-        {#each profiles.profiles as profile (profile.id)}
-          <option value={profile.id}>{profile.name}</option>
-        {/each}
-      </select>
-      <div class="bg-hairline h-5 w-px"></div>
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm"
-        onclick={() => video.choose()}
-      >
-        <FolderOpen class="h-4 w-4" />
-        {video.path ? "Change Source" : "Choose Source"}
-      </button>
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm"
-        disabled={!video.path}
-        onclick={() => {
-          void onAddToQueueClick();
-        }}
-      >
-        Add to Queue
-      </button>
-      <button
-        type="button"
-        class="btn btn-primary btn-sm"
-        disabled={!video.path || isRunning}
-        onclick={onConvertClick}
-      >
-        {isRunning ? "Encoding…" : "Convert"}
-      </button>
+    <div class="flex shrink-0 items-center gap-3">
+      <div class="flex items-center gap-2">
+        <select
+          class="select select-sm"
+          value={encode.settings.name}
+          onchange={onEncoderChange}
+        >
+          {#each ENCODER_NAMES as enc (enc.id)}
+            <option value={enc.id}>{enc.label}</option>
+          {/each}
+        </select>
+        <select
+          class="select select-sm"
+          bind:value={selectedProfileId}
+          onchange={onProfilePickerChange}
+          disabled={profiles.profiles.length === 0}
+          aria-label="Apply profile"
+        >
+          <option value="" disabled>
+            {profiles.profiles.length === 0 ? "No profiles" : "Apply Profile…"}
+          </option>
+          {#each profiles.profiles as profile (profile.id)}
+            <option value={profile.id}>{profile.name}</option>
+          {/each}
+        </select>
+      </div>
+      <div class="bg-hairline mx-1 h-6 w-px"></div>
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm"
+          disabled={!video.path}
+          onclick={() => {
+            void onAddToQueueClick();
+          }}
+        >
+          Add to Queue
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary btn-sm"
+          disabled={!video.path || isRunning}
+          onclick={onConvertClick}
+        >
+          {isRunning ? "Encoding…" : "Convert"}
+        </button>
+      </div>
     </div>
   </header>
 
@@ -408,8 +530,10 @@
     </div>
   {/if}
 
-  <div class="grid flex-1 grid-cols-[3fr_2fr] gap-6 overflow-y-auto p-6">
-    <div class="flex min-w-0 flex-col gap-2">
+  <div
+    class="grid flex-1 grid-cols-[3fr_2fr] items-start gap-6 overflow-y-auto p-6"
+  >
+    <div class="flex min-w-0 flex-col gap-4">
       <div
         class="bg-base-300 border-hairline relative flex aspect-video items-center justify-center overflow-hidden rounded-lg border"
       >
@@ -445,6 +569,28 @@
             onChange={(next: Crop) => (encode.filters.crop = next)}
           />
         {/if}
+        {#if video.info}
+          <div class="pointer-events-none absolute top-3 left-3 flex gap-2">
+            <span
+              class="rounded-sm bg-black/60 px-2 py-1 font-mono text-[10px] text-white/80 backdrop-blur"
+              >{video.info.width} × {video.info.height}</span
+            >
+            <span
+              class="rounded-sm bg-black/60 px-2 py-1 font-mono text-[10px] text-white/80 uppercase backdrop-blur"
+              >{video.info.codecName}</span
+            >
+            <span
+              class="rounded-sm bg-black/60 px-2 py-1 font-mono text-[10px] text-white/80 backdrop-blur"
+              >{video.info.bitDepth}-bit</span
+            >
+            {#if video.info.hdr10}
+              <span
+                class="bg-warning/20 text-warning rounded-sm px-2 py-1 font-mono text-[10px] backdrop-blur"
+                >HDR10</span
+              >
+            {/if}
+          </div>
+        {/if}
       </div>
 
       {#if video.info}
@@ -465,196 +611,183 @@
           </span>
         </div>
       {/if}
+
+      <!-- Transform strip: the mockup's Resolution / Rotate / Flip / Crop-tool
+           row sits directly under the preview (these were previously buried in
+           the Filters accordion). -->
+      <div class="grid grid-cols-4 gap-4">
+        <div class="flex flex-col gap-2">
+          <span
+            class="text-base-content/50 text-[10px] font-semibold tracking-wider uppercase"
+            >Resolution</span
+          >
+          <div class="flex gap-1">
+            <select
+              class="select select-sm flex-1"
+              value={resolutionPreset}
+              onchange={onResolutionPresetChange}
+            >
+              {#each RESOLUTION_PRESETS as preset (preset.key)}
+                <option value={preset.key}>{preset.label}</option>
+              {/each}
+              <option value="custom" disabled={resolutionPreset !== "custom"}
+                >Custom</option
+              >
+            </select>
+            <input
+              type="text"
+              placeholder="Custom"
+              class="input input-sm w-24 font-mono"
+              value={customResolution}
+              onchange={onCustomResolutionChange}
+            />
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <span
+            class="text-base-content/50 text-[10px] font-semibold tracking-wider uppercase"
+            >Rotate</span
+          >
+          <div
+            class="border-hairline bg-base-300 flex h-8 overflow-hidden rounded-md border"
+          >
+            <button
+              type="button"
+              class="border-hairline flex flex-1 items-center justify-center border-r hover:bg-white/5"
+              aria-label="Rotate 90° counter-clockwise"
+              onclick={rotateCounterClockwise}
+            >
+              <RotateCcw class="h-3.5 w-3.5" />
+            </button>
+            <div
+              class="border-hairline flex flex-[1.5] items-center justify-center border-r font-mono text-xs"
+            >
+              {encode.filters.rotateDegrees}°
+            </div>
+            <button
+              type="button"
+              class="flex flex-1 items-center justify-center hover:bg-white/5"
+              aria-label="Rotate 90° clockwise"
+              onclick={rotateClockwise}
+            >
+              <RotateCw class="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <span
+            class="text-base-content/50 text-[10px] font-semibold tracking-wider uppercase"
+            >Flip</span
+          >
+          <select
+            class="select select-sm"
+            value={flipValue}
+            onchange={onFlipChange}
+          >
+            <option value="none">No Flip</option>
+            <option value="h">Horizontal</option>
+            <option value="v">Vertical</option>
+            <option value="both">Both (H+V)</option>
+          </select>
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <span
+            class="text-base-content/50 text-[10px] font-semibold tracking-wider uppercase"
+            >Tool</span
+          >
+          <button
+            type="button"
+            class="btn btn-sm gap-2"
+            class:btn-primary={encode.filters.crop != null}
+            disabled={!video.info}
+            onclick={toggleCropTool}
+          >
+            <CropIcon class="h-4 w-4" />
+            Open Crop Tool
+          </button>
+        </div>
+      </div>
     </div>
 
-    <div class="min-w-0">
+    <!-- Single bordered card: a hairline background shows through the
+         `gap-px` between the `bg-base-300` sections as 1px dividers, matching
+         the design mockup's transcode-settings panel. -->
+    <div
+      class="bg-hairline border-hairline flex min-w-0 flex-col gap-px overflow-hidden rounded-lg border"
+    >
       <AccordionSection
         title="Quality"
         open={openSection === "quality"}
         onToggle={() => (openSection = "quality")}
       >
-        <div class="grid grid-cols-2 gap-x-4 gap-y-3">
-          {#if encode.settings.name === "x265"}
-            <label class="form-control">
-              <span class="text-base-content/50 mb-1 text-xs">Preset</span>
-              <select
-                class="select select-sm"
-                bind:value={encode.settings.preset}
-              >
-                {#each X265_PRESETS as preset (preset)}
-                  <option value={preset}>{preset}</option>
-                {/each}
-              </select>
-            </label>
-            <label class="form-control">
-              <span class="text-base-content/50 mb-1 text-xs">Tune</span>
-              <select
-                class="select select-sm"
-                value={encode.settings.tune ?? ""}
-                onchange={onTuneChange}
-              >
-                <option value="">Default</option>
-                <option value="grain">Grain</option>
-                <option value="animation">Animation</option>
-                <option value="fastdecode">Fast Decode</option>
-                <option value="zerolatency">Zero Latency</option>
-              </select>
-            </label>
-            <div class="join col-span-2">
-              <button
-                type="button"
-                class="btn btn-xs join-item"
-                class:btn-primary={encode.settings.targetBitrateKbps == null}
-                onclick={() => (encode.settings.targetBitrateKbps = null)}
-              >
-                CRF
-              </button>
-              <button
-                type="button"
-                class="btn btn-xs join-item"
-                class:btn-primary={encode.settings.targetBitrateKbps != null}
-                onclick={() => {
-                  encode.settings.targetBitrateKbps ??= 4000;
-                }}
-              >
-                Bitrate
-              </button>
+        {#snippet headerRight()}
+          {#if bitDepthLabel}
+            <span
+              class="rounded border px-2 py-0.5 text-[10px] font-medium tracking-tight uppercase {bitDepthLabel ===
+              '10-bit'
+                ? PILL_ACTIVE
+                : PILL_MUTED}"
+            >
+              {bitDepthLabel}
+            </span>
+          {/if}
+          {#if supportsTwoPass}
+            <span
+              class="rounded border px-2 py-0.5 text-[10px] font-medium tracking-tight uppercase {twoPassOn
+                ? PILL_ACTIVE
+                : PILL_MUTED}"
+            >
+              2-Pass
+            </span>
+          {/if}
+        {/snippet}
+        <div class="flex flex-col gap-5">
+          {#if encode.settings.name === "x265" || encode.settings.name === "x264"}
+            <div class="grid grid-cols-2 gap-4">
+              <label class="form-control">
+                <span
+                  class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
+                  >Preset</span
+                >
+                <select
+                  class="select select-sm"
+                  bind:value={encode.settings.preset}
+                >
+                  {#each encode.settings.name === "x265" ? X265_PRESETS : X264_PRESETS as preset (preset)}
+                    <option value={preset}>{preset}</option>
+                  {/each}
+                </select>
+              </label>
+              <label class="form-control">
+                <span
+                  class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
+                  >Tune</span
+                >
+                <select
+                  class="select select-sm"
+                  value={encode.settings.tune ?? ""}
+                  onchange={onTuneChange}
+                >
+                  <option value="">Default</option>
+                  {#if encode.settings.name === "x264"}
+                    <option value="film">Film</option>
+                  {/if}
+                  <option value="grain">Grain</option>
+                  <option value="animation">Animation</option>
+                  <option value="fastdecode">Fast Decode</option>
+                  <option value="zerolatency">Zero Latency</option>
+                </select>
+              </label>
             </div>
-            {#if encode.settings.targetBitrateKbps == null}
-              <label class="form-control col-span-2">
-                <span class="text-base-content/50 mb-1 text-xs"
-                  >CRF <span class="font-mono">{encode.settings.crf}</span
-                  ></span
-                >
-                <input
-                  type="range"
-                  min="0"
-                  max="51"
-                  step="1"
-                  bind:value={encode.settings.crf}
-                  class="range range-primary range-xs"
-                />
-              </label>
-            {:else}
-              <label class="form-control col-span-2">
-                <span class="text-base-content/50 mb-1 text-xs"
-                  >Bitrate (kbps)</span
-                >
-                <input
-                  type="number"
-                  min="100"
-                  step="100"
-                  bind:value={encode.settings.targetBitrateKbps}
-                  class="input input-sm"
-                />
-              </label>
-              <label class="col-span-2 flex items-center justify-between">
-                <span class="text-sm"
-                  >Two-pass Encoding
-                  <span class="text-base-content/50 text-xs">
-                    (requires longer encode time)
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  class="toggle toggle-primary toggle-sm"
-                  bind:checked={encode.settings.twoPass}
-                />
-              </label>
-            {/if}
-          {:else if encode.settings.name === "x264"}
-            <label class="form-control">
-              <span class="text-base-content/50 mb-1 text-xs">Preset</span>
-              <select
-                class="select select-sm"
-                bind:value={encode.settings.preset}
-              >
-                {#each X264_PRESETS as preset (preset)}
-                  <option value={preset}>{preset}</option>
-                {/each}
-              </select>
-            </label>
-            <label class="form-control">
-              <span class="text-base-content/50 mb-1 text-xs">Tune</span>
-              <select
-                class="select select-sm"
-                value={encode.settings.tune ?? ""}
-                onchange={onTuneChange}
-              >
-                <option value="">Default</option>
-                <option value="film">Film</option>
-                <option value="animation">Animation</option>
-                <option value="grain">Grain</option>
-                <option value="fastdecode">Fast Decode</option>
-                <option value="zerolatency">Zero Latency</option>
-              </select>
-            </label>
-            <div class="join col-span-2">
-              <button
-                type="button"
-                class="btn btn-xs join-item"
-                class:btn-primary={encode.settings.targetBitrateKbps == null}
-                onclick={() => (encode.settings.targetBitrateKbps = null)}
-              >
-                CRF
-              </button>
-              <button
-                type="button"
-                class="btn btn-xs join-item"
-                class:btn-primary={encode.settings.targetBitrateKbps != null}
-                onclick={() => {
-                  encode.settings.targetBitrateKbps ??= 4000;
-                }}
-              >
-                Bitrate
-              </button>
-            </div>
-            {#if encode.settings.targetBitrateKbps == null}
-              <label class="form-control col-span-2">
-                <span class="text-base-content/50 mb-1 text-xs"
-                  >CRF <span class="font-mono">{encode.settings.crf}</span
-                  ></span
-                >
-                <input
-                  type="range"
-                  min="0"
-                  max="51"
-                  step="1"
-                  bind:value={encode.settings.crf}
-                  class="range range-primary range-xs"
-                />
-              </label>
-            {:else}
-              <label class="form-control col-span-2">
-                <span class="text-base-content/50 mb-1 text-xs"
-                  >Bitrate (kbps)</span
-                >
-                <input
-                  type="number"
-                  min="100"
-                  step="100"
-                  bind:value={encode.settings.targetBitrateKbps}
-                  class="input input-sm"
-                />
-              </label>
-              <label class="col-span-2 flex items-center justify-between">
-                <span class="text-sm"
-                  >Two-pass Encoding
-                  <span class="text-base-content/50 text-xs">
-                    (requires longer encode time)
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  class="toggle toggle-primary toggle-sm"
-                  bind:checked={encode.settings.twoPass}
-                />
-              </label>
-            {/if}
           {:else if encode.settings.name === "svtAv1"}
-            <label class="form-control col-span-2">
-              <span class="text-base-content/50 mb-1 text-xs"
-                >Preset (speed) <span class="font-mono"
+            <label class="form-control">
+              <span
+                class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
+                >Preset (speed)
+                <span class="font-mono normal-case"
                   >{encode.settings.speed}</span
                 ></span
               >
@@ -667,59 +800,13 @@
                 class="range range-primary range-xs"
               />
             </label>
-            <div class="join col-span-2">
-              <button
-                type="button"
-                class="btn btn-xs join-item"
-                class:btn-primary={encode.settings.targetBitrateKbps == null}
-                onclick={() => (encode.settings.targetBitrateKbps = null)}
-              >
-                CRF
-              </button>
-              <button
-                type="button"
-                class="btn btn-xs join-item"
-                class:btn-primary={encode.settings.targetBitrateKbps != null}
-                onclick={() => {
-                  encode.settings.targetBitrateKbps ??= 4000;
-                }}
-              >
-                Bitrate
-              </button>
-            </div>
-            {#if encode.settings.targetBitrateKbps == null}
-              <label class="form-control col-span-2">
-                <span class="text-base-content/50 mb-1 text-xs"
-                  >CRF <span class="font-mono">{encode.settings.crf}</span
-                  ></span
-                >
-                <input
-                  type="range"
-                  min="0"
-                  max="63"
-                  step="1"
-                  bind:value={encode.settings.crf}
-                  class="range range-primary range-xs"
-                />
-              </label>
-            {:else}
-              <label class="form-control col-span-2">
-                <span class="text-base-content/50 mb-1 text-xs"
-                  >Bitrate (kbps)</span
-                >
-                <input
-                  type="number"
-                  min="100"
-                  step="100"
-                  bind:value={encode.settings.targetBitrateKbps}
-                  class="input input-sm"
-                />
-              </label>
-            {/if}
-          {:else if encode.settings.name === "h264Videotoolbox" || encode.settings.name === "hevcVideotoolbox"}
-            <label class="form-control col-span-2">
-              <span class="text-base-content/50 mb-1 text-xs"
-                >Quality <span class="font-mono">{encode.settings.quality}</span
+          {:else}
+            <label class="form-control">
+              <span
+                class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
+                >Quality
+                <span class="font-mono normal-case"
+                  >{encode.settings.quality}</span
                 > (higher is better)</span
               >
               <input
@@ -731,6 +818,132 @@
                 class="range range-primary range-xs"
               />
             </label>
+          {/if}
+
+          {#if encode.settings.name === "x265"}
+            <label class="form-control">
+              <span
+                class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
+                >Bit Depth / Pixel Format</span
+              >
+              <select
+                class="select select-sm"
+                bind:value={encode.settings.pixFmt}
+              >
+                <option value="yuv420p10le">10-bit: yuv420p10le</option>
+                <option value="yuv420p">8-bit: yuv420p</option>
+              </select>
+            </label>
+          {/if}
+
+          {#if encode.settings.name === "x265" || encode.settings.name === "x264" || encode.settings.name === "svtAv1"}
+            <div class="bg-hairline h-px"></div>
+
+            <div class="flex flex-col gap-4">
+              <div class="flex items-center justify-between gap-3">
+                <div
+                  class="bg-base-100 border-hairline flex rounded-lg border p-0.5"
+                >
+                  <button
+                    type="button"
+                    class="rounded-md px-4 py-1.5 text-[11px] font-semibold transition-colors {crfMode
+                      ? 'bg-primary text-primary-content'
+                      : 'text-base-content/50 hover:text-base-content'}"
+                    onclick={() => {
+                      setBitrateMode(false);
+                    }}
+                  >
+                    CRF
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-md px-4 py-1.5 text-[11px] font-semibold transition-colors {!crfMode
+                      ? 'bg-primary text-primary-content'
+                      : 'text-base-content/50 hover:text-base-content'}"
+                    onclick={() => {
+                      setBitrateMode(true);
+                    }}
+                  >
+                    Bitrate
+                  </button>
+                </div>
+
+                {#if crfMode}
+                  <div
+                    class="bg-base-100 border-hairline flex items-center overflow-hidden rounded-md border"
+                  >
+                    <button
+                      type="button"
+                      class="flex h-8 items-center px-2.5 hover:bg-white/5"
+                      aria-label="Decrease CRF"
+                      onclick={() => {
+                        stepCrf(-1);
+                      }}
+                    >
+                      <Minus class="h-3 w-3" />
+                    </button>
+                    <div
+                      class="border-hairline flex items-center gap-2 border-x px-4"
+                    >
+                      <span class="font-mono text-xs font-medium"
+                        >{encode.settings.crf}</span
+                      >
+                      {#if outputHeight != null}
+                        <span class="text-base-content/50 text-[10px]"
+                          >({outputHeight}p)</span
+                        >
+                      {/if}
+                    </div>
+                    <button
+                      type="button"
+                      class="flex h-8 items-center px-2.5 hover:bg-white/5"
+                      aria-label="Increase CRF"
+                      onclick={() => {
+                        stepCrf(1);
+                      }}
+                    >
+                      <Plus class="h-3 w-3" />
+                    </button>
+                  </div>
+                {:else}
+                  <label class="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="100"
+                      step="100"
+                      class="input input-sm w-28 text-right font-mono"
+                      bind:value={encode.settings.targetBitrateKbps}
+                    />
+                    <span class="text-base-content/50 text-[10px] uppercase"
+                      >kbps</span
+                    >
+                  </label>
+                {/if}
+              </div>
+
+              {#if encode.settings.name === "x265" || encode.settings.name === "x264"}
+                <div class="flex items-center justify-between gap-3">
+                  <label
+                    class="flex items-center gap-3 {crfMode
+                      ? 'opacity-50'
+                      : ''}"
+                  >
+                    <span class="text-xs font-medium">Two-pass Encoding</span>
+                    <input
+                      type="checkbox"
+                      class="toggle toggle-primary toggle-sm"
+                      bind:checked={encode.settings.twoPass}
+                      disabled={crfMode}
+                    />
+                  </label>
+                  <span class="text-base-content/50 text-[10px]">
+                    {crfMode
+                      ? "Only applies in bitrate mode"
+                      : "Requires longer encode time"}
+                  </span>
+                </div>
+              {/if}
+            </div>
           {/if}
         </div>
       </AccordionSection>
@@ -856,19 +1069,13 @@
             />
           </label>
 
-          <div class="flex flex-col gap-2">
-            <label class="flex items-center justify-between">
-              <span class="text-sm">Crop</span>
-              <input
-                type="checkbox"
-                class="toggle toggle-primary toggle-sm"
-                checked={encode.filters.crop != null}
-                disabled={!video.info}
-                onchange={onToggleCrop}
-              />
-            </label>
-            {#if encode.filters.crop}
-              {@const crop = encode.filters.crop}
+          {#if encode.filters.crop}
+            {@const crop = encode.filters.crop}
+            <div class="flex flex-col gap-2">
+              <span
+                class="text-base-content/50 text-[10px] font-semibold tracking-wider uppercase"
+                >Crop (pixels)</span
+              >
               <div class="grid grid-cols-4 gap-2">
                 <label class="form-control">
                   <span class="text-base-content/50 mb-1 text-xs">Top</span>
@@ -912,91 +1119,12 @@
                 </label>
               </div>
               <p class="text-base-content/50 text-xs">
-                Drag the frame's handles above to crop visually, or type exact
-                pixel values here.
+                Enabled via <span class="font-medium">Open Crop Tool</span> above
+                — drag the frame's handles on the preview, or type exact pixel values
+                here.
               </p>
-            {/if}
-          </div>
-
-          <label class="form-control">
-            <span class="text-base-content/50 mb-1 text-xs">Resolution</span>
-            <select
-              class="select select-xs"
-              value={resolutionPreset}
-              onchange={onResolutionPresetChange}
-            >
-              {#each RESOLUTION_PRESETS as preset (preset.key)}
-                <option value={preset.key}>{preset.label}</option>
-              {/each}
-              <option value="custom" disabled={resolutionPreset !== "custom"}
-                >Custom</option
-              >
-            </select>
-          </label>
-
-          <div class="grid grid-cols-2 gap-2">
-            <label class="form-control">
-              <span class="text-base-content/50 mb-1 text-xs">Scale width</span>
-              <input
-                type="number"
-                min="1"
-                placeholder="auto"
-                class="input input-xs"
-                value={encode.filters.scaleWidth ?? ""}
-                oninput={(event) => {
-                  onScaleInput("scaleWidth", event);
-                }}
-              />
-            </label>
-            <label class="form-control">
-              <span class="text-base-content/50 mb-1 text-xs">Scale height</span
-              >
-              <input
-                type="number"
-                min="1"
-                placeholder="auto"
-                class="input input-xs"
-                value={encode.filters.scaleHeight ?? ""}
-                oninput={(event) => {
-                  onScaleInput("scaleHeight", event);
-                }}
-              />
-            </label>
-          </div>
-
-          <div class="flex items-center gap-2">
-            <button
-              type="button"
-              class="btn btn-sm"
-              onclick={rotateClockwise}
-              aria-label="Rotate 90° clockwise"
-            >
-              <RotateCw class="h-4 w-4" />
-              {encode.filters.rotateDegrees}°
-            </button>
-            <button
-              type="button"
-              class="btn btn-sm"
-              class:btn-primary={encode.filters.horizontalFlip}
-              onclick={() => {
-                encode.filters.horizontalFlip = !encode.filters.horizontalFlip;
-              }}
-              aria-label="Flip horizontally"
-            >
-              <FlipHorizontal class="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              class="btn btn-sm"
-              class:btn-primary={encode.filters.verticalFlip}
-              onclick={() => {
-                encode.filters.verticalFlip = !encode.filters.verticalFlip;
-              }}
-              aria-label="Flip vertically"
-            >
-              <FlipVertical class="h-4 w-4" />
-            </button>
-          </div>
+            </div>
+          {/if}
 
           <div class="border-hairline border-t pt-4">
             <p class="mb-2 text-sm font-medium">Trim</p>
@@ -1067,15 +1195,22 @@
         </div>
       </AccordionSection>
 
-      {#each postFilterStubs as section (section.id)}
-        <AccordionSection
-          title={section.title}
-          open={openSection === section.id}
-          onToggle={() => (openSection = section.id)}
-        >
-          <p class="text-base-content/50 text-sm">{section.note}</p>
-        </AccordionSection>
-      {/each}
+      <AccordionSection
+        title="HDR / Advanced"
+        summary={video.info?.hdr10 ? "HDR10 signaling on" : undefined}
+        open={openSection === "hdr"}
+        onToggle={() => (openSection = "hdr")}
+      >
+        {#snippet headerRight()}
+          {#if video.info?.hdr10}
+            <span
+              class="border-warning/20 bg-warning/10 text-warning rounded border px-2 py-0.5 text-[10px] font-medium tracking-tight uppercase"
+              >HDR10</span
+            >
+          {/if}
+        {/snippet}
+        <p class="text-base-content/50 text-sm">{HDR_NOTE}</p>
+      </AccordionSection>
 
       <AccordionSection
         title="Command Preview"
