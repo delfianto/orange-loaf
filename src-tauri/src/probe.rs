@@ -56,7 +56,7 @@ pub struct Hdr10Metadata {
 /// (0 = first audio stream) to match ffmpeg's own `-map 0:a:{index}`
 /// addressing — deliberately not ffprobe's global stream `index`, which
 /// counts video/audio/subtitle/data streams together.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioTrack {
     pub index: u32,

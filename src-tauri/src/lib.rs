@@ -4,6 +4,7 @@ mod encoders;
 mod filters;
 mod job;
 mod probe;
+mod profiles;
 mod queue;
 mod state;
 mod thumbnail;
@@ -45,6 +46,11 @@ pub fn run() {
             queue::cancel_job,
             queue::pause_queue,
             queue::resume_queue,
+            profiles::list_profiles,
+            profiles::save_profile,
+            profiles::duplicate_profile,
+            profiles::delete_profile,
+            profiles::apply_profile,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

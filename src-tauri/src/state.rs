@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use tokio::sync::oneshot;
 
 use crate::config::Config;
+use crate::profiles::Profiles;
 use crate::queue::Queue;
 
 /// Shared, mutable application state, managed by Tauri and accessed from
@@ -18,6 +19,7 @@ pub struct AppState {
     /// it — `None` whenever nothing is running. Only ever one entry since
     /// the queue runs strictly sequentially.
     pub running_cancel: Mutex<Option<(String, oneshot::Sender<()>)>>,
+    pub profiles: Mutex<Profiles>,
 }
 
 impl AppState {
@@ -26,6 +28,7 @@ impl AppState {
             config: Mutex::new(Config::load()),
             queue: Mutex::new(Queue::load()),
             running_cancel: Mutex::new(None),
+            profiles: Mutex::new(Profiles::load()),
         }
     }
 }

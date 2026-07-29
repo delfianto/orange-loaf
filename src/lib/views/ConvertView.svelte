@@ -567,7 +567,9 @@
                   {/if}
                   <select
                     class="select select-xs"
-                    value={action.downmix ?? ""}
+                    value={action.downmix === null
+                      ? ""
+                      : String(action.downmix)}
                     onchange={(event) => {
                       onDownmixChange(action, event);
                     }}

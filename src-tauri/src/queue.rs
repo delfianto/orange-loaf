@@ -516,6 +516,7 @@ mod tests {
             config: Mutex::new(crate::config::Config::default()),
             queue: Mutex::new(Queue::default()),
             running_cancel: Mutex::new(None),
+            profiles: Mutex::new(crate::profiles::Profiles::default()),
         }
     }
 
