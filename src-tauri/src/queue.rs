@@ -421,6 +421,72 @@ pub fn enqueue_job(
     )
 }
 
+/// Writes the current queue (every job, as-is, plus the `paused` flag) to
+/// `path` — the Queue screen's "Save Queue" button. A plain snapshot, not
+/// filtered to just the still-pending jobs: `import_queue` is what decides
+/// what a re-import actually *means* (re-running everything as fresh
+/// `Queued` jobs), so there's no meaningful difference to filter on here.
+///
+/// # Errors
+///
+/// Returns an error if writing to `path` fails.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub fn export_queue(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    let queue = state.queue.lock().expect("queue mutex poisoned");
+    queue.save_to(std::path::Path::new(&path))
+}
+
+/// Reads a previously-exported queue file and *appends* its jobs to the
+/// end of the current queue, each one reset to a fresh `Queued` job with a
+/// new id (regardless of whatever status/id it was saved with) — "Load
+/// Queue" merges in a saved batch to run again, it doesn't replace
+/// whatever's already here, and reusing old ids risks colliding with a job
+/// already in the live queue.
+///
+/// Deliberately doesn't reuse `Queue::load_from`: that helper treats a
+/// missing/corrupt file as "start fresh" (the right call for the app's own
+/// startup load), but a user explicitly importing a bad file should see a
+/// real error, not a silent no-op that looks like it worked.
+///
+/// # Errors
+///
+/// Returns an error if `path` can't be read or doesn't parse as a queue
+/// file, or if persisting the merged queue fails.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub fn import_queue(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Queue, String> {
+    let contents = std::fs::read_to_string(&path).map_err(|err| err.to_string())?;
+    let imported: Queue = serde_json::from_str(&contents).map_err(|err| err.to_string())?;
+    let snapshot = {
+        let mut queue = state.queue.lock().expect("queue mutex poisoned");
+        merge_imported_jobs(&mut queue.jobs, imported.jobs);
+        queue.save()?;
+        queue.clone()
+    };
+    dispatch_next(app);
+    Ok(snapshot)
+}
+
+/// The actual "reset and append" logic `import_queue` runs, split out as a
+/// pure function so it's unit-testable without a full `tauri::test::mock_app`.
+fn merge_imported_jobs(existing: &mut Vec<Job>, imported: Vec<Job>) {
+    for job in imported {
+        existing.push(Job {
+            id: uuid::Uuid::new_v4().to_string(),
+            status: JobStatus::Queued,
+            started_at_unix_ms: None,
+            finished_at_unix_ms: None,
+            output_size_bytes: None,
+            ..job
+        });
+    }
+}
+
 /// Removes a `Queued`/`Completed`/`Failed`/`Cancelled` job. A `Running` job
 /// must be cancelled first — there's no process to reap otherwise.
 ///
@@ -643,7 +709,8 @@ pub fn resume_queue(app: AppHandle, state: State<'_, AppState>) -> Result<Queue,
 #[cfg(test)]
 mod tests {
     use super::{
-        Job, JobStatus, Queue, cancel_job_impl, dispatch_next, enqueue_job_impl, reorder_queued_job,
+        Job, JobStatus, Queue, cancel_job_impl, dispatch_next, enqueue_job_impl,
+        merge_imported_jobs, reorder_queued_job,
     };
     use crate::encoders::EncoderKind;
     use crate::encoders::x264::X264Settings;
@@ -808,6 +875,95 @@ mod tests {
 
         let sources: Vec<&str> = jobs.iter().map(|j| j.source.as_str()).collect();
         assert_eq!(sources, vec!["b.mkv", "c.mkv", "a.mkv"]);
+    }
+
+    #[test]
+    fn merge_imported_jobs_resets_status_and_timestamps_and_assigns_fresh_ids() {
+        let mut existing = vec![test_job("current.mkv", "current-out.mkv")];
+        let imported = vec![
+            Job {
+                id: "old-id-1".to_owned(),
+                status: JobStatus::Completed,
+                started_at_unix_ms: Some(1000),
+                finished_at_unix_ms: Some(2000),
+                output_size_bytes: Some(12345),
+                ..test_job("a.mkv", "a-out.mkv")
+            },
+            Job {
+                id: "old-id-2".to_owned(),
+                status: JobStatus::Failed {
+                    message: "boom".to_owned(),
+                },
+                ..test_job("b.mkv", "b-out.mkv")
+            },
+        ];
+
+        merge_imported_jobs(&mut existing, imported);
+
+        assert_eq!(
+            existing.len(),
+            3,
+            "imported jobs should append, not replace"
+        );
+        assert_eq!(
+            existing[0].source, "current.mkv",
+            "the pre-existing job is untouched"
+        );
+
+        for imported_job in &existing[1..] {
+            assert!(
+                matches!(imported_job.status, JobStatus::Queued),
+                "every imported job should become Queued regardless of its saved status, got {:?}",
+                imported_job.status
+            );
+            assert_eq!(imported_job.started_at_unix_ms, None);
+            assert_eq!(imported_job.finished_at_unix_ms, None);
+            assert_eq!(imported_job.output_size_bytes, None);
+        }
+        assert_ne!(
+            existing[1].id, "old-id-1",
+            "a fresh id avoids colliding with a job already in the live queue"
+        );
+        assert_ne!(existing[2].id, "old-id-2");
+        assert_eq!(
+            existing[1].source, "a.mkv",
+            "settings/source still carry over"
+        );
+        assert_eq!(existing[2].source, "b.mkv");
+    }
+
+    /// Real file I/O, not just the in-memory merge logic: writes a queue to
+    /// a temp file the same way `export_queue` does (`Queue::save_to`),
+    /// then reads it back exactly the way `import_queue` does (raw
+    /// `read_to_string` + `serde_json::from_str`, deliberately not reusing
+    /// `Queue::load_from` — see `import_queue`'s own doc comment on why),
+    /// confirming the two actually agree on a real round trip through JSON.
+    #[test]
+    fn export_then_import_round_trips_a_real_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "orangeloaf-queue-export-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("failed to create scratch dir");
+        let path = dir.join("saved-queue.json");
+
+        let mut exported = Queue::default();
+        exported.jobs.push(test_job("saved.mkv", "saved-out.mkv"));
+        exported.save_to(&path).expect("export should succeed");
+
+        let contents =
+            std::fs::read_to_string(&path).expect("import should be able to read it back");
+        let imported: Queue =
+            serde_json::from_str(&contents).expect("import should be able to parse it back");
+
+        let mut live_queue = Vec::new();
+        merge_imported_jobs(&mut live_queue, imported.jobs);
+
+        assert_eq!(live_queue.len(), 1);
+        assert_eq!(live_queue[0].source, "saved.mkv");
+        assert!(matches!(live_queue[0].status, JobStatus::Queued));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn test_job(source: &str, output: &str) -> Job {

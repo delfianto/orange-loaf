@@ -48,6 +48,8 @@ pub fn run() {
             commands::preview_naming_template,
             queue::list_queue,
             queue::enqueue_job,
+            queue::export_queue,
+            queue::import_queue,
             queue::remove_from_queue,
             queue::move_job,
             queue::reorder_queue,

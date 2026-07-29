@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type { FilterSpec } from "$lib/filters";
 import type {
   AudioTrackSelection,
@@ -168,6 +169,36 @@ class QueueState {
 
   async cancel(jobId: string): Promise<void> {
     this.applySnapshot(await invoke<QueueSnapshot>("cancel_job", { jobId }));
+  }
+
+  /** No-ops if the user cancels the save dialog. */
+  async exportToFile(): Promise<void> {
+    const path = await save({
+      title: "Save Queue",
+      defaultPath: "queue.json",
+      filters: [{ name: "OrangeLoaf Queue", extensions: ["json"] }],
+    });
+    if (!path) {
+      return;
+    }
+    await invoke("export_queue", { path });
+  }
+
+  /** No-ops if the user cancels the open dialog. Imported jobs are
+   * appended as fresh `Queued` jobs — see `import_queue`'s own doc
+   * comment in queue.rs for why that's a merge, not a replace. */
+  async importFromFile(): Promise<void> {
+    const path = await open({
+      title: "Load Queue",
+      multiple: false,
+      directory: false,
+      filters: [{ name: "OrangeLoaf Queue", extensions: ["json"] }],
+    });
+    if (typeof path !== "string") {
+      return;
+    }
+    await this.ensureListening();
+    this.applySnapshot(await invoke<QueueSnapshot>("import_queue", { path }));
   }
 
   async pause(): Promise<void> {

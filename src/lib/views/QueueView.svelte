@@ -138,6 +138,26 @@
       <button
         type="button"
         class="btn btn-ghost btn-sm"
+        onclick={() => {
+          void queue.importFromFile();
+        }}
+      >
+        Load Queue
+      </button>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        disabled={queue.jobs.length === 0}
+        onclick={() => {
+          void queue.exportToFile();
+        }}
+      >
+        Save Queue
+      </button>
+      <div class="bg-hairline h-4 w-px"></div>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
         disabled={completedJobs.length === 0}
         onclick={() => {
           void clearCompleted();
