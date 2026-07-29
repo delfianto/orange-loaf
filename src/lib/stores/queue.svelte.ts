@@ -34,6 +34,9 @@ export interface Job {
   subtitleTracks: SubtitleTrackSelection[];
   videoInfo: VideoInfo | null;
   status: JobStatus;
+  startedAtUnixMs: number | null;
+  finishedAtUnixMs: number | null;
+  outputSizeBytes: number | null;
 }
 
 interface QueueSnapshot {

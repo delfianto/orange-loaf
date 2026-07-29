@@ -88,10 +88,15 @@ impl History {
     }
 }
 
-fn now_unix_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
+/// Shared with `queue.rs`, which needs to convert an already-captured
+/// `started_at` rather than always meaning "right now."
+pub(crate) fn unix_ms_from(time: SystemTime) -> u64 {
+    time.duration_since(UNIX_EPOCH)
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+}
+
+fn now_unix_ms() -> u64 {
+    unix_ms_from(SystemTime::now())
 }
 
 /// Records one finished job (queue-sourced only for now — see this

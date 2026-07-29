@@ -61,6 +61,20 @@ pub struct Job {
     /// after the source was originally probed (notes/plan.md M12).
     pub video_info: Option<VideoInfo>,
     pub status: JobStatus,
+    /// The three fields below are all `#[serde(default)]` individually
+    /// (not on the struct) so an old `queue.json` from before they existed
+    /// still deserializes instead of silently falling back to
+    /// `Queue::default()` — see `Queue::load_from` — which would look like
+    /// every queued job had simply vanished.
+    #[serde(default)]
+    pub started_at_unix_ms: Option<u64>,
+    #[serde(default)]
+    pub finished_at_unix_ms: Option<u64>,
+    /// Only ever set for a `Completed` job — measured once, right when it
+    /// finishes, rather than re-statted on demand later (the file may have
+    /// since moved/been deleted by the time a UI re-reads it).
+    #[serde(default)]
+    pub output_size_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -157,6 +171,10 @@ fn finish_job<R: Runtime>(app: &AppHandle<R>, job_id: &str, status: JobStatus) {
         let job = queue.jobs.iter_mut().find(|j| j.id == job_id);
         let finished_job = job.as_ref().map(|j| ((*j).clone(), status.clone()));
         if let Some(job) = job {
+            job.finished_at_unix_ms = Some(crate::history::unix_ms_from(SystemTime::now()));
+            if matches!(status, JobStatus::Completed) {
+                job.output_size_bytes = std::fs::metadata(&job.output).ok().map(|m| m.len());
+            }
             job.status = status;
         }
         let _ = queue.save();
@@ -223,6 +241,7 @@ pub fn dispatch_next<R: Runtime>(app: AppHandle<R>) {
             return;
         };
         job.status = JobStatus::Running;
+        job.started_at_unix_ms = Some(crate::history::unix_ms_from(SystemTime::now()));
         let job = job.clone();
         let _ = queue.save();
         job
@@ -357,6 +376,9 @@ fn enqueue_job_impl<R: Runtime>(
         subtitle_tracks,
         video_info,
         status: JobStatus::Queued,
+        started_at_unix_ms: None,
+        finished_at_unix_ms: None,
+        output_size_bytes: None,
     };
     let snapshot = {
         let mut queue = state.queue.lock().expect("queue mutex poisoned");
@@ -584,6 +606,9 @@ mod tests {
             subtitle_tracks: Vec::new(),
             video_info: None,
             status: JobStatus::Running,
+            started_at_unix_ms: None,
+            finished_at_unix_ms: None,
+            output_size_bytes: None,
         });
         queue.save_to(&path).expect("save should succeed");
 
@@ -597,6 +622,43 @@ mod tests {
         assert_eq!(loaded.jobs[0].id, "job-1");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A pre-file-size-tracking `queue.json` has none of the three new
+    /// timestamp/size fields on its jobs — deserializing it must still
+    /// succeed (each field backfilling to `None` individually), not fail
+    /// and fall back to `Queue::default()`, which would silently wipe
+    /// every job an upgrading user had queued (see the fields' own doc
+    /// comment on `Job`).
+    #[test]
+    fn deserializing_a_pre_file_size_tracking_job_backfills_none_not_an_empty_queue() {
+        let json = r#"{"jobs": [{
+            "id": "job-1",
+            "source": "in.mkv",
+            "output": "out.mkv",
+            "durationSecs": 12.0,
+            "settings": {"name": "x264", "preset": "medium", "tune": null, "profile": null, "crf": 23.0},
+            "filters": {
+                "deinterlace": false,
+                "crop": null,
+                "scaleWidth": null,
+                "scaleHeight": null,
+                "rotateDegrees": 0,
+                "horizontalFlip": false,
+                "verticalFlip": false
+            },
+            "trim": {"startTime": null, "endTime": null, "fastSeek": true},
+            "audioTracks": [],
+            "subtitleTracks": [],
+            "videoInfo": null,
+            "status": {"state": "completed"}
+        }], "paused": false}"#;
+        let queue: Queue =
+            serde_json::from_str(json).expect("should deserialize with the new fields absent");
+        assert_eq!(queue.jobs.len(), 1);
+        assert_eq!(queue.jobs[0].started_at_unix_ms, None);
+        assert_eq!(queue.jobs[0].finished_at_unix_ms, None);
+        assert_eq!(queue.jobs[0].output_size_bytes, None);
     }
 
     fn test_job(source: &str, output: &str) -> Job {
@@ -617,6 +679,9 @@ mod tests {
             subtitle_tracks: Vec::new(),
             video_info: None,
             status: JobStatus::Queued,
+            started_at_unix_ms: None,
+            finished_at_unix_ms: None,
+            output_size_bytes: None,
         }
     }
 
@@ -712,6 +777,29 @@ mod tests {
                     "job {} ended as {:?}",
                     job.id,
                     job.status
+                );
+                // Real values, not just "some Some(_)" — this is what
+                // actually powers the Queue screen's completed-row
+                // size/duration display (notes/plan.md's UI-gap audit).
+                let started = job
+                    .started_at_unix_ms
+                    .expect("a completed job should have recorded when it started");
+                let finished = job
+                    .finished_at_unix_ms
+                    .expect("a completed job should have recorded when it finished");
+                assert!(
+                    finished >= started,
+                    "job {} finished ({finished}) before it started ({started})",
+                    job.id
+                );
+                let real_size = std::fs::metadata(&job.output)
+                    .expect("output file should exist")
+                    .len();
+                assert_eq!(
+                    job.output_size_bytes,
+                    Some(real_size),
+                    "job {}'s recorded size should match its real output file",
+                    job.id
                 );
             }
         }

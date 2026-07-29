@@ -69,6 +69,38 @@
     return `${String(sec)}s`;
   }
 
+  function formatBytes(bytes: number): string {
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let value = bytes;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex += 1;
+    }
+    return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex] ?? "B"}`;
+  }
+
+  // Fixed-width H:MM:SS rather than `formatDuration`'s "4m 12s" — a
+  // completed encode's elapsed time can run into hours, where a clock
+  // format reads better than the ETA's more conversational style.
+  function formatClockDuration(totalSeconds: number): string {
+    const s = Math.max(0, Math.round(totalSeconds));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+  }
+
+  const completedSizeLabel = $derived(
+    job.outputSizeBytes != null ? formatBytes(job.outputSizeBytes) : null,
+  );
+  const completedDurationLabel = $derived(
+    job.startedAtUnixMs != null && job.finishedAtUnixMs != null
+      ? formatClockDuration((job.finishedAtUnixMs - job.startedAtUnixMs) / 1000)
+      : null,
+  );
+
   // Derived from `speed` alone (output-seconds encoded per wall-clock
   // second) rather than tracking a separate wall-clock start timestamp —
   // `speed` already carries everything both figures need.
@@ -151,6 +183,17 @@
         <span class="text-base-content/50 font-mono text-[11px]">
           Waiting…
         </span>
+      {:else if job.status.state === "completed"}
+        {#if completedSizeLabel}
+          <span class="text-base-content/50 font-mono text-[11px]"
+            >{completedSizeLabel}</span
+          >
+        {/if}
+        {#if completedDurationLabel}
+          <span class="text-base-content/50 font-mono text-[11px]"
+            >{completedDurationLabel}</span
+          >
+        {/if}
       {:else if job.status.state === "failed"}
         <span class="text-error/80 max-w-xs truncate text-[11px] italic">
           {job.status.message.split("\n")[0]}
