@@ -21,7 +21,13 @@
 
   /* Single rationed accent — used only for primary actions, active nav, focus rings, progress fill */
   --color-primary: #5e6ad2;
-  --color-primary-content: #f4f5f8;
+  /* Pure white, not base-content's #f4f5f8 — text on a btn-primary/bg-primary
+     fill is small (DaisyUI's btn-sm/btn-xs render at 12px/11px, font-weight
+     600, well under WCAG's ~18.66px bold "large text" threshold), so the
+     stricter 4.5:1 AA text ratio applies here, not the 3:1 UI-component
+     one. #f4f5f8 only clears 4.31:1 against this primary; pure white
+     clears 4.70:1 (notes/plan.md M15's contrast audit). */
+  --color-primary-content: #ffffff;
 
   /* Secondary/accent/neutral deliberately desaturated so nothing competes with the one accent hue */
   --color-secondary: #7d828c;
