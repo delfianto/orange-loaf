@@ -43,7 +43,14 @@ pub enum LogLevel {
 /// Grows one field at a time as the milestone that needs it lands, rather
 /// than pre-declaring an unused schema up front.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+// `rename_all` is load-bearing, not cosmetic: the frontend's `Config`
+// interface (src/lib/stores/config.svelte.ts) reads camelCase keys. Without
+// it, `get_config`/`update_config` exchange snake_case JSON the frontend
+// can't read (every field but `language` comes back `undefined`), which
+// hard-crashes SettingsView on `disabledAudioCodecs.includes`. Every other
+// frontend-facing struct in this crate already sets this; Config was the
+// lone omission.
+#[serde(default, rename_all = "camelCase")]
 pub struct Config {
     pub ffmpeg_path: Option<PathBuf>,
     pub ffprobe_path: Option<PathBuf>,
@@ -133,6 +140,28 @@ mod tests {
         assert_eq!(config.language, "en");
         assert!(config.check_for_updates);
         assert_eq!(config.log_level, LogLevel::Info);
+    }
+
+    /// The frontend's `Config` interface reads camelCase keys; if this struct
+    /// ever serializes snake_case again, the whole Rust<->frontend config
+    /// bridge silently breaks and SettingsView crashes on render. Pin the
+    /// exact keys the frontend depends on.
+    #[test]
+    fn config_serializes_with_camel_case_keys_the_frontend_reads() {
+        let json = serde_json::to_value(Config::default()).expect("serializes");
+        let obj = json.as_object().expect("is a JSON object");
+        for key in [
+            "ffmpegPath",
+            "ffprobePath",
+            "outputNamingTemplate",
+            "disabledAudioCodecs",
+            "uiDensity",
+            "language",
+            "checkForUpdates",
+            "logLevel",
+        ] {
+            assert!(obj.contains_key(key), "missing camelCase key `{key}`");
+        }
     }
 
     #[test]
