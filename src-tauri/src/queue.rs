@@ -483,6 +483,71 @@ pub fn move_job(
     Ok(queue.clone())
 }
 
+/// Moves a `Queued` job to `target_index` *among only the queued jobs*
+/// (not `jobs`'s own indices), where `target_index` is expressed in the
+/// *pre-move* queued-slot numbering — matching what a drag-and-drop
+/// reorder in the Queue screen actually shows the user (a list of just
+/// the queued rows) and what it naturally computes (the drop-target
+/// row's own current position). A no-op (matching `move_job`'s own
+/// precedent) if `job_id` isn't currently queued; `target_index` past the
+/// end clamps to "last."
+///
+/// A move *forward* past the dragged job's own original position needs
+/// its target adjusted down by one: removing the dragged job first shifts
+/// every later queued slot down by one, so re-deriving positions from
+/// what's left (necessary — a target real-index computed against the
+/// pre-removal list would be invalidated by the very removal that has to
+/// happen first) would otherwise land one slot too far, but only in this
+/// direction — moving backward isn't affected, since removal doesn't
+/// touch anything before it.
+fn reorder_queued_job(jobs: &mut Vec<Job>, job_id: &str, target_index: usize) {
+    let Some(real_from) = jobs
+        .iter()
+        .position(|j| j.id == job_id && matches!(j.status, JobStatus::Queued))
+    else {
+        return;
+    };
+    let from_pos = jobs
+        .iter()
+        .filter(|j| matches!(j.status, JobStatus::Queued))
+        .position(|j| j.id == job_id)
+        .expect("job_id was just confirmed to be a queued job above");
+
+    let moved = jobs.remove(real_from);
+    let queued_indices: Vec<usize> = jobs
+        .iter()
+        .enumerate()
+        .filter(|(_, j)| matches!(j.status, JobStatus::Queued))
+        .map(|(i, _)| i)
+        .collect();
+    let adjusted_target = if target_index > from_pos {
+        target_index - 1
+    } else {
+        target_index
+    };
+    let insert_at = queued_indices
+        .get(adjusted_target)
+        .copied()
+        .unwrap_or(jobs.len());
+    jobs.insert(insert_at, moved);
+}
+
+/// # Errors
+///
+/// Returns an error if persisting the updated queue fails.
+#[allow(clippy::needless_pass_by_value)]
+#[tauri::command]
+pub fn reorder_queue(
+    state: State<'_, AppState>,
+    job_id: &str,
+    target_index: usize,
+) -> Result<Queue, String> {
+    let mut queue = state.queue.lock().expect("queue mutex poisoned");
+    reorder_queued_job(&mut queue.jobs, job_id, target_index);
+    queue.save()?;
+    Ok(queue.clone())
+}
+
 /// Cancels a job: if it's running, this kills the in-flight ffmpeg process
 /// (asynchronously — the queue snapshot reflects the final `Cancelled`
 /// status once the process actually exits, not immediately on this call
@@ -577,7 +642,9 @@ pub fn resume_queue(app: AppHandle, state: State<'_, AppState>) -> Result<Queue,
 
 #[cfg(test)]
 mod tests {
-    use super::{Job, JobStatus, Queue, cancel_job_impl, dispatch_next, enqueue_job_impl};
+    use super::{
+        Job, JobStatus, Queue, cancel_job_impl, dispatch_next, enqueue_job_impl, reorder_queued_job,
+    };
     use crate::encoders::EncoderKind;
     use crate::encoders::x264::X264Settings;
     use crate::filters::FilterSpec;
@@ -659,6 +726,88 @@ mod tests {
         assert_eq!(queue.jobs[0].started_at_unix_ms, None);
         assert_eq!(queue.jobs[0].finished_at_unix_ms, None);
         assert_eq!(queue.jobs[0].output_size_bytes, None);
+    }
+
+    #[test]
+    fn reorder_queued_job_moves_a_queued_job_to_the_front_among_queued_jobs_only() {
+        let mut jobs = vec![
+            test_job("a.mkv", "a-out.mkv"),
+            test_job("b.mkv", "b-out.mkv"),
+            test_job("c.mkv", "c-out.mkv"),
+            Job {
+                status: JobStatus::Running,
+                ..test_job("running.mkv", "running-out.mkv")
+            },
+            test_job("d.mkv", "d-out.mkv"),
+        ];
+        let c_id = jobs[2].id.clone();
+
+        reorder_queued_job(&mut jobs, &c_id, 0);
+
+        let sources: Vec<&str> = jobs.iter().map(|j| j.source.as_str()).collect();
+        assert_eq!(
+            sources,
+            vec!["c.mkv", "a.mkv", "b.mkv", "running.mkv", "d.mkv"]
+        );
+    }
+
+    /// The forward-move case specifically: dropping a job onto a target
+    /// slot *after* its own original position needs the target adjusted
+    /// for the shift its own removal causes, or it overshoots by one — see
+    /// `reorder_queued_job`'s own doc comment.
+    #[test]
+    fn reorder_queued_job_moving_forward_lands_on_the_intended_slot_not_one_past_it() {
+        let mut jobs = vec![
+            test_job("a.mkv", "a-out.mkv"),
+            test_job("b.mkv", "b-out.mkv"),
+            test_job("c.mkv", "c-out.mkv"),
+            test_job("d.mkv", "d-out.mkv"),
+            test_job("e.mkv", "e-out.mkv"),
+        ];
+        let a_id = jobs[0].id.clone();
+
+        // "Drop A after C" — C is at pre-move queued position 2, so landing
+        // right after it means pre-move target position 3.
+        reorder_queued_job(&mut jobs, &a_id, 3);
+
+        let sources: Vec<&str> = jobs.iter().map(|j| j.source.as_str()).collect();
+        assert_eq!(sources, vec!["b.mkv", "c.mkv", "a.mkv", "d.mkv", "e.mkv"]);
+    }
+
+    #[test]
+    fn reorder_queued_job_is_a_no_op_for_a_job_that_isnt_queued() {
+        let mut jobs = vec![
+            Job {
+                status: JobStatus::Running,
+                ..test_job("running.mkv", "running-out.mkv")
+            },
+            test_job("queued.mkv", "queued-out.mkv"),
+        ];
+        let running_id = jobs[0].id.clone();
+
+        reorder_queued_job(&mut jobs, &running_id, 1);
+
+        let sources: Vec<&str> = jobs.iter().map(|j| j.source.as_str()).collect();
+        assert_eq!(
+            sources,
+            vec!["running.mkv", "queued.mkv"],
+            "a non-queued job's position shouldn't change"
+        );
+    }
+
+    #[test]
+    fn reorder_queued_job_clamps_an_out_of_range_target_to_the_end() {
+        let mut jobs = vec![
+            test_job("a.mkv", "a-out.mkv"),
+            test_job("b.mkv", "b-out.mkv"),
+            test_job("c.mkv", "c-out.mkv"),
+        ];
+        let a_id = jobs[0].id.clone();
+
+        reorder_queued_job(&mut jobs, &a_id, 999);
+
+        let sources: Vec<&str> = jobs.iter().map(|j| j.source.as_str()).collect();
+        assert_eq!(sources, vec!["b.mkv", "c.mkv", "a.mkv"]);
     }
 
     fn test_job(source: &str, output: &str) -> Job {

@@ -50,6 +50,7 @@ pub fn run() {
             queue::enqueue_job,
             queue::remove_from_queue,
             queue::move_job,
+            queue::reorder_queue,
             queue::cancel_job,
             queue::pause_queue,
             queue::resume_queue,

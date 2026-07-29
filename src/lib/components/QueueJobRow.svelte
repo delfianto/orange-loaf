@@ -9,6 +9,7 @@
   import CircleDashed from "lucide-svelte/icons/circle-dashed";
   import ArrowUp from "lucide-svelte/icons/arrow-up";
   import ArrowDown from "lucide-svelte/icons/arrow-down";
+  import GripVertical from "lucide-svelte/icons/grip-vertical";
   import Trash2 from "lucide-svelte/icons/trash-2";
   import FolderSearch from "lucide-svelte/icons/folder-search";
   import Copy from "lucide-svelte/icons/copy";
@@ -124,14 +125,69 @@
   function copyLog(): void {
     void navigator.clipboard.writeText(visibleLog.join("\n"));
   }
+
+  // Only queued rows are draggable (matching the existing Move Up/Down
+  // buttons' own precedent — reordering a running/finished job isn't
+  // meaningful), so `dropPosition` only ever matters while both the
+  // dragged and hovered row are queued.
+  let dropPosition: "before" | "after" | null = $state(null);
+
+  function onDragStart(event: DragEvent): void {
+    event.dataTransfer?.setData("text/plain", job.id);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+    }
+  }
+
+  function onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    const row = event.currentTarget as HTMLElement;
+    const rect = row.getBoundingClientRect();
+    dropPosition =
+      event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+  }
+
+  function onDragLeave(): void {
+    dropPosition = null;
+  }
+
+  function onDrop(event: DragEvent): void {
+    event.preventDefault();
+    const draggedId = event.dataTransfer?.getData("text/plain");
+    const position = dropPosition;
+    dropPosition = null;
+    if (!draggedId || draggedId === job.id) {
+      return;
+    }
+    void queue.reorder(draggedId, position === "after" ? index + 1 : index);
+  }
 </script>
 
 <div>
   <!-- A `<button>` can't validly contain other buttons, so only the
        disclosure toggle (chevron/icon/name/badge) is one; the status
        display and action buttons are its siblings in this row, not its
-       children. -->
-  <div class="group flex h-11 w-full items-center gap-3 px-4">
+       children. The drag handle is a sibling for the same reason, plus a
+       practical one: nesting a `draggable` element inside the disclosure
+       button would make a drag gesture also fire its click. -->
+  <div
+    class="group flex h-11 w-full items-center gap-3 border-t-2 border-b-2 px-4 {dropPosition ===
+    'before'
+      ? 'border-t-primary'
+      : 'border-t-transparent'} {dropPosition === 'after'
+      ? 'border-b-primary'
+      : 'border-b-transparent'}"
+    ondragover={job.status.state === "queued" ? onDragOver : undefined}
+    ondragleave={job.status.state === "queued" ? onDragLeave : undefined}
+    ondrop={job.status.state === "queued" ? onDrop : undefined}
+  >
+    {#if job.status.state === "queued"}
+      <GripVertical
+        class="text-base-content/40 hover:text-base-content/70 h-3.5 w-3.5 shrink-0 cursor-grab"
+        draggable="true"
+        ondragstart={onDragStart}
+      />
+    {/if}
     <button
       type="button"
       class="flex min-w-0 flex-1 items-center gap-3 text-left"

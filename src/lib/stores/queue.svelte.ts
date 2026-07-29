@@ -156,6 +156,16 @@ class QueueState {
     );
   }
 
+  /** `targetIndex` is a position among only the *queued* jobs (matching
+   * what QueueJobRow's own `index` prop already means), not the full
+   * queue — see `reorder_queued_job`'s doc comment in queue.rs for the
+   * exact pre-move-numbering semantics. */
+  async reorder(jobId: string, targetIndex: number): Promise<void> {
+    this.applySnapshot(
+      await invoke<QueueSnapshot>("reorder_queue", { jobId, targetIndex }),
+    );
+  }
+
   async cancel(jobId: string): Promise<void> {
     this.applySnapshot(await invoke<QueueSnapshot>("cancel_job", { jobId }));
   }
