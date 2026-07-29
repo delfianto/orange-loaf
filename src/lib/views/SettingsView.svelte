@@ -145,222 +145,233 @@
   </header>
 
   <div class="flex-1 overflow-y-auto p-6">
-    <div class="mx-auto flex max-w-2xl flex-col gap-6">
-      <section>
-        <h2 class={sectionHeading}>{m.settings_detected_programs()}</h2>
-        <div class="{card} divide-hairline divide-y">
-          {#each knownTools as known (known.key)}
-            {@const status = tools.statuses.find(
-              (s) => s.name === known.displayName,
-            )}
-            <div class="flex items-center gap-3 px-4 py-3">
-              {#if tools.loading && !status}
-                <Loader
-                  class="text-base-content/40 h-4 w-4 shrink-0 animate-spin"
-                />
-              {:else if status?.found}
-                <CircleCheck class="text-success h-4 w-4 shrink-0" />
-              {:else}
-                <CircleX class="text-error h-4 w-4 shrink-0" />
-              {/if}
+    <div
+      class="mx-auto grid max-w-6xl grid-cols-1 items-start gap-6 xl:grid-cols-2"
+    >
+      <!-- Left: the encoding pipeline (external tools, output naming, audio
+           codecs). The grid collapses to a single column below xl (~1280px),
+           per design-system.md's settings-layout note. -->
+      <div class="flex flex-col gap-6">
+        <section>
+          <h2 class={sectionHeading}>{m.settings_detected_programs()}</h2>
+          <div class="{card} divide-hairline divide-y">
+            {#each knownTools as known (known.key)}
+              {@const status = tools.statuses.find(
+                (s) => s.name === known.displayName,
+              )}
+              <div class="flex items-center gap-3 px-4 py-3">
+                {#if tools.loading && !status}
+                  <Loader
+                    class="text-base-content/40 h-4 w-4 shrink-0 animate-spin"
+                  />
+                {:else if status?.found}
+                  <CircleCheck class="text-success h-4 w-4 shrink-0" />
+                {:else}
+                  <CircleX class="text-error h-4 w-4 shrink-0" />
+                {/if}
 
-              <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium">{known.displayName}</p>
-                {#if status?.found}
-                  <p class="text-base-content/50 truncate font-mono text-xs">
-                    {status.path}
-                  </p>
-                  {#if status.version}
-                    <p class="text-base-content/40 truncate text-xs">
-                      {status.version}
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium">{known.displayName}</p>
+                  {#if status?.found}
+                    <p class="text-base-content/50 truncate font-mono text-xs">
+                      {status.path}
+                    </p>
+                    {#if status.version}
+                      <p class="text-base-content/40 truncate text-xs">
+                        {status.version}
+                      </p>
+                    {/if}
+                  {:else}
+                    <p class="text-base-content/50 text-xs">
+                      {m.settings_not_found_on_path()}
                     </p>
                   {/if}
-                {:else}
-                  <p class="text-base-content/50 text-xs">
-                    {m.settings_not_found_on_path()}
-                  </p>
-                {/if}
-              </div>
+                </div>
 
-              <button
-                type="button"
-                class="btn btn-ghost btn-xs"
-                onclick={() => tools.browseFor(known.key)}
-              >
-                <FolderOpen class="h-3.5 w-3.5" />
-                {m.settings_browse()}
-              </button>
-            </div>
-          {/each}
-        </div>
-      </section>
-
-      <section>
-        <h2 class={sectionHeading}>{m.settings_output_naming()}</h2>
-        <div class="{card} p-4">
-          {#if config.data}
-            <label
-              class="text-base-content/50 mb-1.5 block text-xs"
-              for="naming-template"
-            >
-              {m.settings_naming_template_label()}
-            </label>
-            <input
-              id="naming-template"
-              bind:this={templateInputEl}
-              class="input input-sm w-full font-mono"
-              bind:value={config.data.outputNamingTemplate}
-              oninput={() => void config.refreshPreview()}
-              onchange={commitNamingTemplate}
-            />
-            <div class="mt-2 flex flex-wrap gap-1.5">
-              {#each config.namingVariables as variable (variable.name)}
                 <button
                   type="button"
-                  class="badge badge-sm cursor-pointer {variable.postEncode
-                    ? 'badge-outline'
-                    : 'badge-ghost'}"
-                  title="{variable.description} (e.g. {variable.example})"
-                  onclick={() => {
-                    insertNamingVariable(variable.name);
-                  }}
+                  class="btn btn-ghost btn-xs"
+                  onclick={() => tools.browseFor(known.key)}
                 >
-                  {"{" + variable.name + "}"}
+                  <FolderOpen class="h-3.5 w-3.5" />
+                  {m.settings_browse()}
                 </button>
-              {/each}
-            </div>
-            <div
-              class="border-hairline mt-3 flex items-center gap-2 border-t pt-3"
-            >
-              <span
-                class="text-base-content/50 shrink-0 text-[10px] font-semibold tracking-wider uppercase"
-              >
-                {m.settings_preview_label()}
-              </span>
-              <span class="truncate font-mono text-xs">
-                {config.namingPreview || "—"}.mkv
-              </span>
-            </div>
-            <button
-              type="button"
-              class="btn btn-ghost btn-xs mt-3"
-              onclick={resetNamingTemplate}
-            >
-              <RotateCcw class="h-3 w-3" />
-              {m.settings_reset_to_default()}
-            </button>
-          {:else}
-            <Loader class="text-base-content/40 h-4 w-4 animate-spin" />
-          {/if}
-        </div>
-      </section>
-
-      <section>
-        <h2 class={sectionHeading}>{m.settings_audio_encoders()}</h2>
-        <div class="{card} divide-hairline divide-y">
-          {#each AUDIO_CODECS as codec (codec.id)}
-            <label class="flex items-center gap-3 px-4 py-2.5">
-              <input
-                type="checkbox"
-                class="checkbox checkbox-sm"
-                checked={config.isAudioCodecEnabled(codec.id)}
-                onchange={(e) => {
-                  onToggleCodec(codec.id, e);
-                }}
-              />
-              <span class="flex-1 text-sm">{codec.label}</span>
-              {#if codec.lossless}
-                <span class="badge badge-xs badge-outline"
-                  >{m.settings_lossless()}</span
-                >
-              {/if}
-            </label>
-          {/each}
-        </div>
-        <p class="text-base-content/50 mt-2 text-xs">
-          {m.settings_audio_encoders_hint()}
-        </p>
-      </section>
-
-      <section>
-        <h2 class={sectionHeading}>{m.settings_appearance()}</h2>
-        <div class="{card} flex items-center justify-between p-4">
-          <span class="text-sm">{m.settings_ui_density()}</span>
-          <div class="join">
-            <button
-              type="button"
-              class="join-item btn btn-xs {config.data?.uiDensity ===
-              'comfortable'
-                ? 'btn-primary'
-                : 'btn-ghost'}"
-              onclick={() => {
-                setDensity("comfortable");
-              }}
-            >
-              {m.settings_density_comfortable()}
-            </button>
-            <button
-              type="button"
-              class="join-item btn btn-xs {config.data?.uiDensity === 'compact'
-                ? 'btn-primary'
-                : 'btn-ghost'}"
-              onclick={() => {
-                setDensity("compact");
-              }}
-            >
-              {m.settings_density_compact()}
-            </button>
+              </div>
+            {/each}
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section>
-        <h2 class={sectionHeading}>{m.settings_language()}</h2>
-        <div class="{card} flex items-center justify-between p-4">
-          <span class="text-sm">{m.settings_display_language()}</span>
-          <select
-            class="select select-sm"
-            value={config.data?.language}
-            onchange={onLanguageChange}
-          >
-            {#each LANGUAGES as lang (lang.id)}
-              <option value={lang.id}>{lang.label}</option>
+        <section>
+          <h2 class={sectionHeading}>{m.settings_output_naming()}</h2>
+          <div class="{card} p-4">
+            {#if config.data}
+              <label
+                class="text-base-content/50 mb-1.5 block text-xs"
+                for="naming-template"
+              >
+                {m.settings_naming_template_label()}
+              </label>
+              <input
+                id="naming-template"
+                bind:this={templateInputEl}
+                class="input input-sm w-full font-mono"
+                bind:value={config.data.outputNamingTemplate}
+                oninput={() => void config.refreshPreview()}
+                onchange={commitNamingTemplate}
+              />
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                {#each config.namingVariables as variable (variable.name)}
+                  <button
+                    type="button"
+                    class="badge badge-sm cursor-pointer {variable.postEncode
+                      ? 'badge-outline'
+                      : 'badge-ghost'}"
+                    title="{variable.description} (e.g. {variable.example})"
+                    onclick={() => {
+                      insertNamingVariable(variable.name);
+                    }}
+                  >
+                    {"{" + variable.name + "}"}
+                  </button>
+                {/each}
+              </div>
+              <div
+                class="border-hairline mt-3 flex items-center gap-2 border-t pt-3"
+              >
+                <span
+                  class="text-base-content/50 shrink-0 text-[10px] font-semibold tracking-wider uppercase"
+                >
+                  {m.settings_preview_label()}
+                </span>
+                <span class="truncate font-mono text-xs">
+                  {config.namingPreview || "—"}.mkv
+                </span>
+              </div>
+              <button
+                type="button"
+                class="btn btn-ghost btn-xs mt-3"
+                onclick={resetNamingTemplate}
+              >
+                <RotateCcw class="h-3 w-3" />
+                {m.settings_reset_to_default()}
+              </button>
+            {:else}
+              <Loader class="text-base-content/40 h-4 w-4 animate-spin" />
+            {/if}
+          </div>
+        </section>
+
+        <section>
+          <h2 class={sectionHeading}>{m.settings_audio_encoders()}</h2>
+          <div class="{card} divide-hairline divide-y">
+            {#each AUDIO_CODECS as codec (codec.id)}
+              <label class="flex items-center gap-3 px-4 py-2.5">
+                <input
+                  type="checkbox"
+                  class="checkbox checkbox-sm"
+                  checked={config.isAudioCodecEnabled(codec.id)}
+                  onchange={(e) => {
+                    onToggleCodec(codec.id, e);
+                  }}
+                />
+                <span class="flex-1 text-sm">{codec.label}</span>
+                {#if codec.lossless}
+                  <span class="badge badge-xs badge-outline"
+                    >{m.settings_lossless()}</span
+                  >
+                {/if}
+              </label>
             {/each}
-          </select>
-        </div>
-        <p class="text-base-content/50 mt-2 text-xs">
-          {m.settings_language_hint()}
-        </p>
-      </section>
+          </div>
+          <p class="text-base-content/50 mt-2 text-xs">
+            {m.settings_audio_encoders_hint()}
+          </p>
+        </section>
+      </div>
 
-      <section>
-        <h2 class={sectionHeading}>{m.settings_behavior()}</h2>
-        <div class="{card} flex items-center justify-between p-4">
-          <span class="text-sm">{m.settings_check_for_updates()}</span>
-          <input
-            type="checkbox"
-            class="toggle toggle-sm"
-            checked={config.data?.checkForUpdates ?? false}
-            onchange={onCheckForUpdatesChange}
-          />
-        </div>
-      </section>
+      <!-- Right: application preferences. -->
+      <div class="flex flex-col gap-6">
+        <section>
+          <h2 class={sectionHeading}>{m.settings_appearance()}</h2>
+          <div class="{card} flex items-center justify-between p-4">
+            <span class="text-sm">{m.settings_ui_density()}</span>
+            <div class="join">
+              <button
+                type="button"
+                class="join-item btn btn-xs {config.data?.uiDensity ===
+                'comfortable'
+                  ? 'btn-primary'
+                  : 'btn-ghost'}"
+                onclick={() => {
+                  setDensity("comfortable");
+                }}
+              >
+                {m.settings_density_comfortable()}
+              </button>
+              <button
+                type="button"
+                class="join-item btn btn-xs {config.data?.uiDensity ===
+                'compact'
+                  ? 'btn-primary'
+                  : 'btn-ghost'}"
+                onclick={() => {
+                  setDensity("compact");
+                }}
+              >
+                {m.settings_density_compact()}
+              </button>
+            </div>
+          </div>
+        </section>
 
-      <section>
-        <h2 class={sectionHeading}>{m.settings_logging()}</h2>
-        <div class="{card} flex items-center justify-between p-4">
-          <span class="text-sm">{m.settings_log_level()}</span>
-          <select
-            class="select select-sm"
-            value={config.data?.logLevel}
-            onchange={onLogLevelChange}
-          >
-            {#each LOG_LEVELS as level (level.id)}
-              <option value={level.id}>{level.label()}</option>
-            {/each}
-          </select>
-        </div>
-      </section>
+        <section>
+          <h2 class={sectionHeading}>{m.settings_language()}</h2>
+          <div class="{card} flex items-center justify-between p-4">
+            <span class="text-sm">{m.settings_display_language()}</span>
+            <select
+              class="select select-sm"
+              value={config.data?.language}
+              onchange={onLanguageChange}
+            >
+              {#each LANGUAGES as lang (lang.id)}
+                <option value={lang.id}>{lang.label}</option>
+              {/each}
+            </select>
+          </div>
+          <p class="text-base-content/50 mt-2 text-xs">
+            {m.settings_language_hint()}
+          </p>
+        </section>
+
+        <section>
+          <h2 class={sectionHeading}>{m.settings_behavior()}</h2>
+          <div class="{card} flex items-center justify-between p-4">
+            <span class="text-sm">{m.settings_check_for_updates()}</span>
+            <input
+              type="checkbox"
+              class="toggle toggle-sm"
+              checked={config.data?.checkForUpdates ?? false}
+              onchange={onCheckForUpdatesChange}
+            />
+          </div>
+        </section>
+
+        <section>
+          <h2 class={sectionHeading}>{m.settings_logging()}</h2>
+          <div class="{card} flex items-center justify-between p-4">
+            <span class="text-sm">{m.settings_log_level()}</span>
+            <select
+              class="select select-sm"
+              value={config.data?.logLevel}
+              onchange={onLogLevelChange}
+            >
+              {#each LOG_LEVELS as level (level.id)}
+                <option value={level.id}>{level.label()}</option>
+              {/each}
+            </select>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </div>
