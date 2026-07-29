@@ -80,7 +80,9 @@ impl History {
             std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
         }
         let contents = serde_json::to_string_pretty(self).map_err(|err| err.to_string())?;
-        let tmp_path = path.with_extension("json.tmp");
+        // Unique temp name — see queue.rs's `save_to` for why a fixed one
+        // isn't safe against concurrent writers to the same path.
+        let tmp_path = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4().simple()));
         std::fs::write(&tmp_path, &contents).map_err(|err| err.to_string())?;
         std::fs::rename(&tmp_path, path).map_err(|err| err.to_string())
     }

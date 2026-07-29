@@ -21,6 +21,7 @@
   } from "$lib/stores/encode.svelte";
   import { video } from "$lib/stores/video.svelte";
   import { navigation } from "$lib/stores/navigation.svelte";
+  import { config } from "$lib/stores/config.svelte";
 
   onMount(() => {
     void profiles.refresh();
@@ -368,7 +369,7 @@
                           );
                         }}
                       >
-                        {#each AUDIO_CODECS as codec (codec.id)}
+                        {#each config.availableAudioCodecs(action.codec) as codec (codec.id)}
                           <option value={codec.id}>{codec.label}</option>
                         {/each}
                       </select>

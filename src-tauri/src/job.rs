@@ -154,12 +154,12 @@ pub async fn run<R: Runtime>(
     ffmpeg: PathBuf,
     steps: Vec<EncodeStep>,
     duration_secs: f64,
-) {
+) -> EncodeStatus {
     let (cancel_tx, cancel_rx) = oneshot::channel();
     // Kept alive for the duration of the encode (dropping it would resolve
     // `cancel_rx` immediately, falsely "cancelling" the job) but never used.
     let _cancel_tx = cancel_tx;
-    run_cancelable(app, job_id, ffmpeg, steps, duration_secs, cancel_rx).await;
+    run_cancelable(app, job_id, ffmpeg, steps, duration_secs, cancel_rx).await
 }
 
 /// Same as [`run`], but selects on `cancel_rx` alongside reading ffmpeg's

@@ -28,6 +28,7 @@ directories = "6.0.0"
 base64 = "0.23.0"
 tokio = { version = "1.53.1", features = ["process", "io-util", "rt", "sync", "macros", "time"] }
 uuid = { version = "1.24.0", features = ["v4"] }
+time = "0.3"
 
 [dev-dependencies]
 # Enables tauri::test::mock_app(), and — via #[default_runtime]'s

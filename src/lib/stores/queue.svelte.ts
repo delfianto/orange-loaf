@@ -9,7 +9,7 @@ import type {
   SubtitleTrackSelection,
   Trim,
 } from "$lib/stores/encode.svelte";
-import type { Hdr10Metadata } from "$lib/stores/video.svelte";
+import type { VideoInfo } from "$lib/stores/video.svelte";
 
 // Mirrors src-tauri/src/queue.rs's `JobStatus` wire shape.
 export type JobStatus =
@@ -32,7 +32,7 @@ export interface Job {
   trim: Trim;
   audioTracks: AudioTrackSelection[];
   subtitleTracks: SubtitleTrackSelection[];
-  hdr10: Hdr10Metadata | null;
+  videoInfo: VideoInfo | null;
   status: JobStatus;
 }
 
@@ -108,7 +108,7 @@ class QueueState {
     trim: Trim,
     audioTracks: AudioTrackSelection[],
     subtitleTracks: SubtitleTrackSelection[],
-    hdr10: Hdr10Metadata | null,
+    videoInfo: VideoInfo | null,
   ): Promise<void> {
     await this.ensureListening();
     this.applySnapshot(
@@ -120,7 +120,7 @@ class QueueState {
         trim,
         audioTracks,
         subtitleTracks,
-        hdr10,
+        videoInfo,
       }),
     );
   }
@@ -136,7 +136,7 @@ class QueueState {
       job.trim,
       job.audioTracks,
       job.subtitleTracks,
-      job.hdr10,
+      job.videoInfo,
     );
     await this.remove(job.id);
   }

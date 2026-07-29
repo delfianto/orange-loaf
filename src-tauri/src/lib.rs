@@ -4,6 +4,7 @@ mod encoders;
 mod filters;
 mod history;
 mod job;
+mod naming;
 mod probe;
 mod profiles;
 mod queue;
@@ -40,6 +41,10 @@ pub fn run() {
             commands::generate_thumbnail,
             commands::start_encode,
             commands::preview_command,
+            commands::get_config,
+            commands::update_config,
+            commands::list_naming_variables,
+            commands::preview_naming_template,
             queue::list_queue,
             queue::enqueue_job,
             queue::remove_from_queue,

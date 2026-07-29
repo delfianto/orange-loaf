@@ -47,6 +47,14 @@ export interface VideoInfo {
   pixFmt: string | null;
   bitDepth: number;
   frameRate: number | null;
+  // Not surfaced in the UI yet — carried through so the naming-template
+  // system (src-tauri/src/naming.rs, M12) has real data for
+  // {source_bitrate}/{color_space}/{color_primaries}/{hdr} once this
+  // VideoInfo is sent back as a command param (start_encode/enqueue_job).
+  bitrateBps: number | null;
+  colorSpace: string | null;
+  colorPrimaries: string | null;
+  colorTransfer: string | null;
   hdr10: Hdr10Metadata | null;
   audioTracks: AudioTrack[];
   subtitleTracks: SubtitleTrack[];

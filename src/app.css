@@ -67,3 +67,11 @@
 body {
   font-family: var(--font-sans);
 }
+
+/* UI density (Settings > Appearance, notes/plan.md M12). Tailwind's spacing
+ * scale is rem-based, so scaling the root font-size shrinks padding/gaps/
+ * row-heights/icons/text uniformly across every view, without every
+ * component needing its own compact variant. */
+:root[data-density="compact"] {
+  font-size: 14px;
+}

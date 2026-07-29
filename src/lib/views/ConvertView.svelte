@@ -20,6 +20,7 @@
   import type { Crop } from "$lib/filters";
   import { queue } from "$lib/stores/queue.svelte";
   import { navigation } from "$lib/stores/navigation.svelte";
+  import { config } from "$lib/stores/config.svelte";
   import AccordionSection from "$lib/components/AccordionSection.svelte";
   import CropOverlay from "$lib/components/CropOverlay.svelte";
   import TrackRow from "$lib/components/TrackRow.svelte";
@@ -58,7 +59,7 @@
     const trim = $state.snapshot(encode.trim);
     const audioTracks = $state.snapshot(encode.audioTracks);
     const subtitleTracks = $state.snapshot(encode.subtitleTracks);
-    const hdr10 = video.info ? $state.snapshot(video.info.hdr10) : null;
+    const videoInfo = video.info ? $state.snapshot(video.info) : null;
     void encode.refreshPreview(
       path,
       settings,
@@ -66,7 +67,7 @@
       trim,
       audioTracks,
       subtitleTracks,
-      hdr10,
+      videoInfo,
     );
   });
 
@@ -191,7 +192,7 @@
     if (!video.path || !video.info || encode.status?.state === "running") {
       return;
     }
-    void encode.start(video.path, video.info.durationSecs, video.info.hdr10);
+    void encode.start(video.path, video.info.durationSecs, video.info);
   }
 
   async function onAddToQueueClick(): Promise<void> {
@@ -206,7 +207,7 @@
       $state.snapshot(encode.trim),
       $state.snapshot(encode.audioTracks),
       $state.snapshot(encode.subtitleTracks),
-      video.info.hdr10,
+      video.info,
     );
     navigation.current = "queue";
   }
@@ -550,7 +551,7 @@
                 </select>
                 {#if action.action === "convert"}
                   <select class="select select-xs" bind:value={action.codec}>
-                    {#each AUDIO_CODECS as codec (codec.id)}
+                    {#each config.availableAudioCodecs(action.codec) as codec (codec.id)}
                       <option value={codec.id}>{codec.label}</option>
                     {/each}
                   </select>

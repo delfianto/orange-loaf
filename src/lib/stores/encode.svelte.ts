@@ -3,7 +3,6 @@ import { listen } from "@tauri-apps/api/event";
 import { defaultFilters, type FilterSpec } from "$lib/filters";
 import type {
   AudioTrack,
-  Hdr10Metadata,
   SubtitleTrack,
   VideoInfo,
 } from "$lib/stores/video.svelte";
@@ -236,7 +235,7 @@ class EncodeState {
     trim: Trim,
     audioTracks: AudioTrackSelection[],
     subtitleTracks: SubtitleTrackSelection[],
-    hdr10: Hdr10Metadata | null,
+    videoInfo: VideoInfo | null,
   ): Promise<void> {
     if (!path) {
       this.commandPreview = [];
@@ -250,21 +249,22 @@ class EncodeState {
         trim,
         audioTracks,
         subtitleTracks,
-        hdr10,
+        videoInfo,
       });
     } catch {
       this.commandPreview = [];
     }
   }
 
-  // `hdr10` isn't user-editable state (no "preserve HDR" toggle exists yet
-  // — see notes/plan.md M8), so it's threaded through as a plain parameter
-  // sourced straight from `video.info.hdr10` rather than duplicated into
-  // its own field here.
+  // `videoInfo` isn't user-editable state, so it's threaded through as a
+  // plain parameter sourced straight from the `video` store rather than
+  // duplicated into its own field here — it feeds both HDR passthrough
+  // (M8) and the naming-template system's source/color/audio variables
+  // (src-tauri/src/naming.rs, M12).
   async start(
     path: string,
     durationSecs: number,
-    hdr10: Hdr10Metadata | null,
+    videoInfo: VideoInfo | null,
   ): Promise<void> {
     await this.ensureListening();
     this.starting = true;
@@ -279,7 +279,7 @@ class EncodeState {
         trim: this.trim,
         audioTracks: this.audioTracks,
         subtitleTracks: this.subtitleTracks,
-        hdr10,
+        videoInfo,
       });
     } catch (err) {
       this.status = { state: "failed", message: String(err) };

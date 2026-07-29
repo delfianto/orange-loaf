@@ -1,15 +1,17 @@
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tokio::sync::oneshot;
 
-use crate::commands::derive_output_path;
+use crate::commands::build_output_path;
 use crate::encoders::tracks::{AudioTrackSelection, SubtitleTrackSelection};
 use crate::encoders::{EncodeContext, EncoderKind, EncoderProfile, Trim};
 use crate::filters::FilterSpec;
 use crate::job::{self, EncodeStatus};
-use crate::probe::Hdr10Metadata;
+use crate::naming;
+use crate::probe::VideoInfo;
 use crate::state::AppState;
 use crate::tools;
 
@@ -53,7 +55,11 @@ pub struct Job {
     pub trim: Trim,
     pub audio_tracks: Vec<AudioTrackSelection>,
     pub subtitle_tracks: Vec<SubtitleTrackSelection>,
-    pub hdr10: Option<Hdr10Metadata>,
+    /// The source's full probe result, kept (not just its `hdr10` subset)
+    /// so the naming template's source/audio/color/etc. variables still
+    /// have real data to resolve from even though this job may run long
+    /// after the source was originally probed (notes/plan.md M12).
+    pub video_info: Option<VideoInfo>,
     pub status: JobStatus,
 }
 
@@ -126,8 +132,14 @@ impl Queue {
         let contents = serde_json::to_string_pretty(self).map_err(|err| err.to_string())?;
         // Atomic write (temp file in the same directory, then rename) so a
         // crash/power-loss mid-write can't leave a truncated, unparseable
-        // queue.json behind (notes/plan.md §4.9).
-        let tmp_path = path.with_extension("json.tmp");
+        // queue.json behind (notes/plan.md §4.9). The temp name includes a
+        // random component — a fixed name would let two concurrent writers
+        // to the same `path` (which only happens today when multiple
+        // independent test `Queue`s alias the same real on-disk path, since
+        // in the running app `state.queue`'s mutex already serializes every
+        // real save) race: one's rename can consume the temp file the other
+        // is still about to rename, failing with a spurious "not found."
+        let tmp_path = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4().simple()));
         std::fs::write(&tmp_path, &contents).map_err(|err| err.to_string())?;
         std::fs::rename(&tmp_path, path).map_err(|err| err.to_string())
     }
@@ -229,12 +241,20 @@ pub fn dispatch_next<R: Runtime>(app: AppHandle<R>) {
             return;
         }
     };
+    // Best-effort only: needed for the post-encode naming pass, which
+    // already no-ops when the template has no post-encode variables — a
+    // missing ffprobe just means that pass is skipped too, not that the
+    // encode itself can't proceed.
+    let ffprobe = {
+        let config = state.config.lock().expect("config mutex poisoned");
+        tools::ffprobe_path(&config).ok()
+    };
 
     let ctx = EncodeContext {
         filters: job.filters.clone(),
         audio_tracks: job.audio_tracks.clone(),
         subtitle_tracks: job.subtitle_tracks.clone(),
-        hdr10: job.hdr10,
+        hdr10: job.video_info.as_ref().and_then(|v| v.hdr10),
         ..EncodeContext::new(job.source.clone(), job.output.clone())
     }
     .with_trim(job.trim);
@@ -248,6 +268,8 @@ pub fn dispatch_next<R: Runtime>(app: AppHandle<R>) {
 
     let job_id = job.id.clone();
     let duration_secs = job.duration_secs;
+    let output = job.output.clone();
+    let started_at = SystemTime::now();
     tauri::async_runtime::spawn(async move {
         let outcome = job::run_cancelable(
             app.clone(),
@@ -258,6 +280,23 @@ pub fn dispatch_next<R: Runtime>(app: AppHandle<R>) {
             cancel_rx,
         )
         .await;
+
+        // Placeholder-token rename (notes/plan.md M12) happens here, before
+        // `finish_job` reads this job's `output` back out of the queue for
+        // its History entry — so a renamed file and its History record
+        // never disagree about the filename.
+        if let (EncodeStatus::Completed, Some(ffprobe)) = (&outcome, &ffprobe) {
+            let renamed = naming::finalize_output_naming(ffprobe, &output, started_at);
+            if renamed != output {
+                let state = app.state::<AppState>();
+                let mut queue = state.queue.lock().expect("queue mutex poisoned");
+                if let Some(job) = queue.jobs.iter_mut().find(|j| j.id == job_id) {
+                    job.output = renamed;
+                }
+                let _ = queue.save();
+            }
+        }
+
         finish_job(&app, &job_id, outcome.into());
         dispatch_next(app);
     });
@@ -274,14 +313,64 @@ pub fn list_queue(state: State<'_, AppState>) -> Queue {
 
 /// Adds a new job (built from the Convert screen's current settings,
 /// mirroring `start_encode`'s parameters exactly) to the end of the queue,
-/// then triggers dispatch in case nothing else is running.
-///
+/// then triggers dispatch in case nothing else is running. Extracted from
+/// the `#[tauri::command]` wrapper (which can't be generic — see
+/// `cancel_job`/`cancel_job_impl`'s equivalent split) specifically so tests
+/// can call it with a `MockRuntime` handle and exercise the real
+/// naming-template resolution path, not just the command's simpler
+/// hand-built-`Job` shortcut.
+#[allow(clippy::too_many_arguments)]
+fn enqueue_job_impl<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    source: String,
+    duration_secs: f64,
+    settings: EncoderKind,
+    filters: FilterSpec,
+    trim: Trim,
+    audio_tracks: Vec<AudioTrackSelection>,
+    subtitle_tracks: Vec<SubtitleTrackSelection>,
+    video_info: Option<VideoInfo>,
+) -> Result<Queue, String> {
+    let naming_template = state
+        .config
+        .lock()
+        .expect("config mutex poisoned")
+        .output_naming_template
+        .clone();
+    let output = build_output_path(
+        &naming_template,
+        &source,
+        &settings,
+        &filters,
+        video_info.as_ref(),
+    );
+    let job = Job {
+        id: uuid::Uuid::new_v4().to_string(),
+        source,
+        output,
+        duration_secs,
+        settings,
+        filters,
+        trim,
+        audio_tracks,
+        subtitle_tracks,
+        video_info,
+        status: JobStatus::Queued,
+    };
+    let snapshot = {
+        let mut queue = state.queue.lock().expect("queue mutex poisoned");
+        queue.jobs.push(job);
+        queue.save()?;
+        queue.clone()
+    };
+    dispatch_next(app.clone());
+    Ok(snapshot)
+}
+
 /// # Errors
 ///
-/// Returns an error if the output path can't be derived from `source`, or
-/// if persisting the updated queue fails.
-// Every parameter is a distinct, necessary piece of job configuration —
-// see `commands::start_encode`'s equivalent comment.
+/// Returns an error if persisting the updated queue fails.
 #[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
 #[tauri::command]
 pub fn enqueue_job(
@@ -294,30 +383,20 @@ pub fn enqueue_job(
     trim: Trim,
     audio_tracks: Vec<AudioTrackSelection>,
     subtitle_tracks: Vec<SubtitleTrackSelection>,
-    hdr10: Option<Hdr10Metadata>,
+    video_info: Option<VideoInfo>,
 ) -> Result<Queue, String> {
-    let output = derive_output_path(&source)?;
-    let job = Job {
-        id: uuid::Uuid::new_v4().to_string(),
+    enqueue_job_impl(
+        &app,
+        &state,
         source,
-        output,
         duration_secs,
         settings,
         filters,
         trim,
         audio_tracks,
         subtitle_tracks,
-        hdr10,
-        status: JobStatus::Queued,
-    };
-    let snapshot = {
-        let mut queue = state.queue.lock().expect("queue mutex poisoned");
-        queue.jobs.push(job);
-        queue.save()?;
-        queue.clone()
-    };
-    dispatch_next(app);
-    Ok(snapshot)
+        video_info,
+    )
 }
 
 /// Removes a `Queued`/`Completed`/`Failed`/`Cancelled` job. A `Running` job
@@ -476,10 +555,11 @@ pub fn resume_queue(app: AppHandle, state: State<'_, AppState>) -> Result<Queue,
 
 #[cfg(test)]
 mod tests {
-    use super::{Job, JobStatus, Queue, cancel_job_impl, dispatch_next};
+    use super::{Job, JobStatus, Queue, cancel_job_impl, dispatch_next, enqueue_job_impl};
     use crate::encoders::EncoderKind;
     use crate::encoders::x264::X264Settings;
     use crate::filters::FilterSpec;
+    use crate::probe::VideoInfo;
     use crate::state::AppState;
     use std::sync::Mutex;
     use tauri::Manager;
@@ -501,7 +581,7 @@ mod tests {
             trim: crate::encoders::Trim::default(),
             audio_tracks: Vec::new(),
             subtitle_tracks: Vec::new(),
-            hdr10: None,
+            video_info: None,
             status: JobStatus::Running,
         });
         queue.save_to(&path).expect("save should succeed");
@@ -534,7 +614,7 @@ mod tests {
             trim: crate::encoders::Trim::default(),
             audio_tracks: Vec::new(),
             subtitle_tracks: Vec::new(),
-            hdr10: None,
+            video_info: None,
             status: JobStatus::Queued,
         }
     }
@@ -825,5 +905,108 @@ mod tests {
         let _ = std::fs::remove_file(&source);
         let _ = std::fs::remove_file(&slow_output);
         let _ = std::fs::remove_file(&next_output);
+    }
+
+    /// Exercises the naming-template system (notes/plan.md M12) through the
+    /// real `enqueue_job` command and a real `dispatch_next` run, not just
+    /// `naming::resolve_pre_encode`/`resolve_post_encode` in isolation —
+    /// this is what actually proves the two phases are wired together
+    /// correctly end to end: `enqueue_job` must resolve pre-encode
+    /// variables into the job's initial `output` (with any post-encode
+    /// variable left as a literal placeholder token), and once the real
+    /// encode finishes, `dispatch_next` must rename the real file *and*
+    /// update the queue's own `job.output` to match — a mismatch between
+    /// the two would leave "Open Containing Folder"/History pointing at a
+    /// file that no longer exists under that name.
+    #[test]
+    #[ignore = "requires system ffmpeg"]
+    fn real_enqueue_resolves_naming_template_pre_and_post_encode() {
+        let app = tauri::test::mock_app();
+        let mut state = mock_state();
+        state.config = Mutex::new(crate::config::Config {
+            output_naming_template:
+                "voltaic-naming-it-{source}-{encoder}-{source_resolution}-{filesize}".to_owned(),
+            ..crate::config::Config::default()
+        });
+        app.manage(state);
+        let handle = app.handle().clone();
+
+        let video_info = VideoInfo {
+            duration_secs: 2.0,
+            width: 320,
+            height: 240,
+            codec_name: "h264".to_owned(),
+            pix_fmt: Some("yuv420p".to_owned()),
+            bit_depth: 8,
+            frame_rate: Some(25.0),
+            bitrate_bps: None,
+            color_space: None,
+            color_primaries: None,
+            color_transfer: None,
+            hdr10: None,
+            audio_tracks: Vec::new(),
+            subtitle_tracks: Vec::new(),
+        };
+
+        let queue_after_enqueue = enqueue_job_impl(
+            &handle,
+            &handle.state::<AppState>(),
+            "tests/fixtures/sdr_8bit.mp4".to_owned(),
+            2.0,
+            EncoderKind::X264(X264Settings {
+                preset: "ultrafast".to_owned(),
+                tune: None,
+                profile: None,
+                crf: 30.0,
+            }),
+            FilterSpec::default(),
+            crate::encoders::Trim::default(),
+            Vec::new(),
+            Vec::new(),
+            Some(video_info),
+        )
+        .expect("enqueue should succeed");
+
+        let job_id = queue_after_enqueue.jobs[0].id.clone();
+        let pre_encode_output = queue_after_enqueue.jobs[0].output.clone();
+        assert!(
+            pre_encode_output.contains("voltaic-naming-it-sdr_8bit-x264-320x240-FFFSIZE"),
+            "pre-encode resolution didn't produce the expected stem: {pre_encode_output}"
+        );
+
+        dispatch_next(handle.clone());
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let final_output = loop {
+            let state = handle.state::<AppState>();
+            let queue = state.queue.lock().expect("queue mutex poisoned");
+            let job = queue
+                .jobs
+                .iter()
+                .find(|j| j.id == job_id)
+                .expect("job should still be in the queue");
+            match &job.status {
+                JobStatus::Completed => break job.output.clone(),
+                JobStatus::Failed { message } => panic!("job failed: {message}"),
+                _ => {}
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "job did not finish within 30s"
+            );
+            drop(queue);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        };
+
+        assert!(
+            !final_output.contains("FFFSIZE"),
+            "post-encode placeholder was never resolved: {final_output}"
+        );
+        assert!(
+            std::path::Path::new(&final_output).exists(),
+            "renamed output file should exist at {final_output}"
+        );
+
+        let _ = std::fs::remove_file(&final_output);
     }
 }

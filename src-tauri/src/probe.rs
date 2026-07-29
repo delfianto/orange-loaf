@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// video. Deliberately small — only the fields the Convert screen actually
 /// renders today; more fields join this (and the ffprobe deserialization
 /// below) as the features that need them land.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VideoInfo {
     pub duration_secs: f64,
@@ -17,6 +17,12 @@ pub struct VideoInfo {
     pub pix_fmt: Option<String>,
     pub bit_depth: u8,
     pub frame_rate: Option<f64>,
+    /// Overall (format-level) bitrate, as ffprobe reports it — `None` for
+    /// containers that don't carry one (e.g. some `.mkv`s leave it out).
+    pub bitrate_bps: Option<u64>,
+    pub color_space: Option<String>,
+    pub color_primaries: Option<String>,
+    pub color_transfer: Option<String>,
     pub hdr10: Option<Hdr10Metadata>,
     pub audio_tracks: Vec<AudioTrack>,
     pub subtitle_tracks: Vec<SubtitleTrack>,
@@ -67,7 +73,7 @@ pub struct AudioTrack {
     pub is_default: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubtitleTrack {
     pub index: u32,
@@ -93,8 +99,11 @@ struct FfprobeStream {
     pix_fmt: Option<String>,
     bits_per_raw_sample: Option<String>,
     color_primaries: Option<String>,
+    color_space: Option<String>,
+    color_transfer: Option<String>,
     r_frame_rate: Option<String>,
     channels: Option<u32>,
+    bit_rate: Option<String>,
     #[serde(default)]
     disposition: FfprobeDisposition,
     #[serde(default)]
@@ -118,6 +127,7 @@ struct FfprobeTags {
 #[derive(Debug, Deserialize)]
 struct FfprobeFormat {
     duration: Option<String>,
+    bit_rate: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -302,14 +312,9 @@ fn extract_hdr10(ffprobe: &Path, source: &str) -> Option<Hdr10Metadata> {
         .find_map(|frame| hdr10_from_side_data(&frame.side_data_list))
 }
 
-/// Probes a source video with ffprobe and returns the subset of its
-/// metadata Voltaic currently uses.
-///
-/// # Errors
-///
-/// Returns an error if ffprobe can't be run, its output can't be parsed,
-/// or the source has no real (non-attached-picture) video stream.
-pub fn probe_video(ffprobe: &Path, source: &str) -> Result<VideoInfo, String> {
+/// Runs ffprobe's format+streams probe (the shape both [`probe_video`] and
+/// [`probe_output_bitrates`] need) and parses its JSON output.
+fn run_ffprobe_format_and_streams(ffprobe: &Path, source: &str) -> Result<FfprobeOutput, String> {
     let output = Command::new(ffprobe)
         .args([
             "-v",
@@ -327,8 +332,19 @@ pub fn probe_video(ffprobe: &Path, source: &str) -> Result<VideoInfo, String> {
         return Err(format!("ffprobe exited with an error probing {source}"));
     }
 
-    let parsed: FfprobeOutput = serde_json::from_slice(&output.stdout)
-        .map_err(|err| format!("failed to parse ffprobe output: {err}"))?;
+    serde_json::from_slice(&output.stdout)
+        .map_err(|err| format!("failed to parse ffprobe output: {err}"))
+}
+
+/// Probes a source video with ffprobe and returns the subset of its
+/// metadata Voltaic currently uses.
+///
+/// # Errors
+///
+/// Returns an error if ffprobe can't be run, its output can't be parsed,
+/// or the source has no real (non-attached-picture) video stream.
+pub fn probe_video(ffprobe: &Path, source: &str) -> Result<VideoInfo, String> {
+    let parsed = run_ffprobe_format_and_streams(ffprobe, source)?;
 
     let video_stream = parsed
         .streams
@@ -361,9 +377,58 @@ pub fn probe_video(ffprobe: &Path, source: &str) -> Result<VideoInfo, String> {
             .r_frame_rate
             .as_deref()
             .and_then(parse_fraction),
+        bitrate_bps: parsed
+            .format
+            .bit_rate
+            .as_deref()
+            .and_then(|b| b.parse().ok()),
+        color_space: video_stream.color_space.clone(),
+        color_primaries: video_stream.color_primaries.clone(),
+        color_transfer: video_stream.color_transfer.clone(),
         hdr10: extract_hdr10(ffprobe, source),
         audio_tracks: audio_tracks(&parsed.streams),
         subtitle_tracks: subtitle_tracks(&parsed.streams),
+    })
+}
+
+/// The subset of an already-encoded *output* file's bitrates the naming
+/// template's post-encode variables need (notes/plan.md M12) — deliberately
+/// not folded into [`VideoInfo`], which describes a *source* being
+/// configured for encoding, not a finished result being reported on.
+// The shared `_bps` suffix is the unit, not accidental redundancy — losing
+// it would make call sites like `stats.bitrates.video` ambiguous about
+// scale (bps vs. the kbps naming-template output actually renders).
+#[allow(clippy::struct_field_names)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OutputBitrates {
+    pub overall_bps: Option<u64>,
+    pub video_bps: Option<u64>,
+    pub audio_bps: Option<u64>,
+}
+
+/// # Errors
+///
+/// Returns an error if ffprobe can't be run or its output can't be parsed.
+pub fn probe_output_bitrates(ffprobe: &Path, source: &str) -> Result<OutputBitrates, String> {
+    let parsed = run_ffprobe_format_and_streams(ffprobe, source)?;
+    Ok(OutputBitrates {
+        overall_bps: parsed
+            .format
+            .bit_rate
+            .as_deref()
+            .and_then(|b| b.parse().ok()),
+        video_bps: parsed
+            .streams
+            .iter()
+            .find(|s| is_real_video_stream(s))
+            .and_then(|s| s.bit_rate.as_deref())
+            .and_then(|b| b.parse().ok()),
+        audio_bps: parsed
+            .streams
+            .iter()
+            .find(|s| s.codec_type == "audio")
+            .and_then(|s| s.bit_rate.as_deref())
+            .and_then(|b| b.parse().ok()),
     })
 }
 
@@ -371,7 +436,8 @@ pub fn probe_video(ffprobe: &Path, source: &str) -> Result<VideoInfo, String> {
 mod tests {
     use super::{
         FfprobeDisposition, FfprobeFrameSideData, FfprobeStream, FfprobeTags, audio_tracks,
-        guess_bit_depth, hdr10_from_side_data, parse_fraction, probe_video, subtitle_tracks,
+        guess_bit_depth, hdr10_from_side_data, parse_fraction, probe_output_bitrates, probe_video,
+        subtitle_tracks,
     };
     use std::path::Path;
 
@@ -590,5 +656,25 @@ mod tests {
         assert_eq!(hdr10.min_luminance, 50.0 / 10000.0);
         assert_eq!(hdr10.max_content_light, Some(1000));
         assert_eq!(hdr10.max_average_light, Some(400));
+    }
+
+    #[test]
+    #[ignore = "requires system ffprobe"]
+    fn probes_a_real_video_and_reports_bitrate_and_color_metadata() {
+        let info = probe_video(Path::new("ffprobe"), "tests/fixtures/sdr_8bit.mp4")
+            .expect("probe should succeed");
+        // The fixture is a tiny synthetic clip — its exact bitrate isn't the
+        // point, only that ffprobe's format-level figure actually made it
+        // through into `VideoInfo` rather than being silently dropped.
+        assert!(info.bitrate_bps.is_some());
+    }
+
+    #[test]
+    #[ignore = "requires system ffprobe"]
+    fn probe_output_bitrates_reports_real_overall_and_per_stream_values() {
+        let bitrates = probe_output_bitrates(Path::new("ffprobe"), "tests/fixtures/sdr_8bit.mp4")
+            .expect("probe should succeed");
+        assert!(bitrates.overall_bps.is_some());
+        assert!(bitrates.video_bps.is_some());
     }
 }

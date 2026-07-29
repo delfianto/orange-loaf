@@ -132,6 +132,85 @@ impl EncoderProfile for EncoderKind {
     }
 }
 
+impl EncoderKind {
+    /// Short id — matches both this enum's own serde tag and the frontend's
+    /// `EncoderName`. Used by the naming template's `{encoder}` variable
+    /// (notes/plan.md M12).
+    #[must_use]
+    pub fn encoder_id(&self) -> &'static str {
+        match self {
+            Self::X265(_) => "x265",
+            Self::X264(_) => "x264",
+            Self::SvtAv1(_) => "svtAv1",
+            Self::H264Videotoolbox(_) => "h264Videotoolbox",
+            Self::HevcVideotoolbox(_) => "hevcVideotoolbox",
+        }
+    }
+
+    /// Human label — matches the frontend's `ENCODER_NAMES` table. Used by
+    /// the naming template's `{codec}` variable ("full codec name").
+    #[must_use]
+    pub fn display_label(&self) -> &'static str {
+        match self {
+            Self::X265(_) => "HEVC (x265)",
+            Self::X264(_) => "AVC (x264)",
+            Self::SvtAv1(_) => "AV1 (SVT-AV1)",
+            Self::H264Videotoolbox(_) => "H.264 (VideoToolbox)",
+            Self::HevcVideotoolbox(_) => "HEVC (VideoToolbox)",
+        }
+    }
+
+    /// `None` for encoders with no preset concept — `SvtAv1`'s `speed`
+    /// field is deliberately not aliased in here (see its own doc comment:
+    /// it's a genuinely different concept that happens to map to ffmpeg's
+    /// `-preset` flag) and `VideoToolbox` has no preset at all.
+    #[must_use]
+    pub fn preset(&self) -> Option<&str> {
+        match self {
+            Self::X265(s) => Some(&s.preset),
+            Self::X264(s) => Some(&s.preset),
+            Self::SvtAv1(_) | Self::H264Videotoolbox(_) | Self::HevcVideotoolbox(_) => None,
+        }
+    }
+
+    /// `None` for `VideoToolbox`, which uses its own `quality` scale
+    /// instead of a CRF (see `videotoolbox.rs`'s doc comment on the
+    /// direction/units difference).
+    #[must_use]
+    pub fn crf(&self) -> Option<f32> {
+        match self {
+            Self::X265(s) => Some(s.crf),
+            Self::X264(s) => Some(s.crf),
+            Self::SvtAv1(s) => Some(s.crf),
+            Self::H264Videotoolbox(_) | Self::HevcVideotoolbox(_) => None,
+        }
+    }
+
+    /// Only x265 has a user-facing pixel-format setting today.
+    #[must_use]
+    pub fn pix_fmt(&self) -> Option<&str> {
+        match self {
+            Self::X265(s) => Some(&s.pix_fmt),
+            Self::X264(_)
+            | Self::SvtAv1(_)
+            | Self::H264Videotoolbox(_)
+            | Self::HevcVideotoolbox(_) => None,
+        }
+    }
+
+    /// Always `None` today: no encoder in this app has a bitrate-mode
+    /// setting yet (every one of them is CRF/quality-only, per M4's scope)
+    /// — kept as a real per-variant method (matching `preset`/`crf`/
+    /// `pix_fmt`'s call shape) rather than a naming-module constant, so
+    /// it's obviously wrong in one place, not two, the day bitrate mode
+    /// lands on some encoder and this needs to stop being a blanket `None`.
+    #[must_use]
+    #[allow(clippy::unused_self)]
+    pub fn target_bitrate(&self) -> Option<f64> {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::EncoderKind;
@@ -177,5 +256,40 @@ mod tests {
         let value = serde_json::to_value(EncoderKind::X265(X265Settings::default())).unwrap();
         assert_eq!(value["preset"], "medium");
         assert_eq!(value["crf"], 22.0);
+    }
+
+    #[test]
+    fn naming_accessors_are_populated_for_preset_and_crf_encoders() {
+        let x265 = EncoderKind::X265(X265Settings::default());
+        assert_eq!(x265.encoder_id(), "x265");
+        assert_eq!(x265.preset(), Some("medium"));
+        assert_eq!(x265.crf(), Some(22.0));
+        assert_eq!(x265.pix_fmt(), Some("yuv420p10le"));
+    }
+
+    #[test]
+    fn naming_accessors_are_none_for_concepts_svt_av1_and_videotoolbox_dont_have() {
+        let svt = EncoderKind::SvtAv1(SvtAv1Settings::default());
+        assert_eq!(svt.preset(), None, "svt-av1 has speed, not preset");
+        assert_eq!(svt.crf(), Some(24.0));
+        assert_eq!(svt.pix_fmt(), None);
+
+        let vt = EncoderKind::H264Videotoolbox(H264VideoToolboxSettings::default());
+        assert_eq!(vt.preset(), None);
+        assert_eq!(vt.crf(), None, "videotoolbox has quality, not crf");
+        assert_eq!(vt.pix_fmt(), None);
+    }
+
+    #[test]
+    fn no_encoder_has_a_target_bitrate_yet() {
+        for kind in [
+            EncoderKind::X265(X265Settings::default()),
+            EncoderKind::X264(X264Settings::default()),
+            EncoderKind::SvtAv1(SvtAv1Settings::default()),
+            EncoderKind::H264Videotoolbox(H264VideoToolboxSettings::default()),
+            EncoderKind::HevcVideotoolbox(HevcVideoToolboxSettings::default()),
+        ] {
+            assert_eq!(kind.target_bitrate(), None);
+        }
     }
 }
