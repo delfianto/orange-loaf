@@ -282,7 +282,9 @@
   }
 
   function copyCommand(): void {
-    void navigator.clipboard.writeText(encode.commandPreview.join(" "));
+    void navigator.clipboard.writeText(
+      encode.commandPreview.map((step) => step.join(" ")).join("\n\n"),
+    );
   }
 
   const isRunning = $derived(encode.status?.state === "running");
@@ -498,19 +500,68 @@
                 <option value="zerolatency">Zero Latency</option>
               </select>
             </label>
-            <label class="form-control col-span-2">
-              <span class="text-base-content/50 mb-1 text-xs"
-                >CRF <span class="font-mono">{encode.settings.crf}</span></span
+            <div class="join col-span-2">
+              <button
+                type="button"
+                class="btn btn-xs join-item"
+                class:btn-primary={encode.settings.targetBitrateKbps == null}
+                onclick={() => (encode.settings.targetBitrateKbps = null)}
               >
-              <input
-                type="range"
-                min="0"
-                max="51"
-                step="1"
-                bind:value={encode.settings.crf}
-                class="range range-primary range-xs"
-              />
-            </label>
+                CRF
+              </button>
+              <button
+                type="button"
+                class="btn btn-xs join-item"
+                class:btn-primary={encode.settings.targetBitrateKbps != null}
+                onclick={() => {
+                  encode.settings.targetBitrateKbps ??= 4000;
+                }}
+              >
+                Bitrate
+              </button>
+            </div>
+            {#if encode.settings.targetBitrateKbps == null}
+              <label class="form-control col-span-2">
+                <span class="text-base-content/50 mb-1 text-xs"
+                  >CRF <span class="font-mono">{encode.settings.crf}</span
+                  ></span
+                >
+                <input
+                  type="range"
+                  min="0"
+                  max="51"
+                  step="1"
+                  bind:value={encode.settings.crf}
+                  class="range range-primary range-xs"
+                />
+              </label>
+            {:else}
+              <label class="form-control col-span-2">
+                <span class="text-base-content/50 mb-1 text-xs"
+                  >Bitrate (kbps)</span
+                >
+                <input
+                  type="number"
+                  min="100"
+                  step="100"
+                  bind:value={encode.settings.targetBitrateKbps}
+                  class="input input-sm"
+                />
+              </label>
+              <label class="col-span-2 flex items-center justify-between">
+                <span class="text-sm"
+                  >Two-pass Encoding
+                  <span class="text-base-content/50 text-xs">
+                    (requires longer encode time)
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  class="toggle toggle-primary toggle-sm"
+                  bind:checked={encode.settings.twoPass}
+                />
+              </label>
+            {/if}
           {:else if encode.settings.name === "x264"}
             <label class="form-control">
               <span class="text-base-content/50 mb-1 text-xs">Preset</span>
@@ -538,19 +589,68 @@
                 <option value="zerolatency">Zero Latency</option>
               </select>
             </label>
-            <label class="form-control col-span-2">
-              <span class="text-base-content/50 mb-1 text-xs"
-                >CRF <span class="font-mono">{encode.settings.crf}</span></span
+            <div class="join col-span-2">
+              <button
+                type="button"
+                class="btn btn-xs join-item"
+                class:btn-primary={encode.settings.targetBitrateKbps == null}
+                onclick={() => (encode.settings.targetBitrateKbps = null)}
               >
-              <input
-                type="range"
-                min="0"
-                max="51"
-                step="1"
-                bind:value={encode.settings.crf}
-                class="range range-primary range-xs"
-              />
-            </label>
+                CRF
+              </button>
+              <button
+                type="button"
+                class="btn btn-xs join-item"
+                class:btn-primary={encode.settings.targetBitrateKbps != null}
+                onclick={() => {
+                  encode.settings.targetBitrateKbps ??= 4000;
+                }}
+              >
+                Bitrate
+              </button>
+            </div>
+            {#if encode.settings.targetBitrateKbps == null}
+              <label class="form-control col-span-2">
+                <span class="text-base-content/50 mb-1 text-xs"
+                  >CRF <span class="font-mono">{encode.settings.crf}</span
+                  ></span
+                >
+                <input
+                  type="range"
+                  min="0"
+                  max="51"
+                  step="1"
+                  bind:value={encode.settings.crf}
+                  class="range range-primary range-xs"
+                />
+              </label>
+            {:else}
+              <label class="form-control col-span-2">
+                <span class="text-base-content/50 mb-1 text-xs"
+                  >Bitrate (kbps)</span
+                >
+                <input
+                  type="number"
+                  min="100"
+                  step="100"
+                  bind:value={encode.settings.targetBitrateKbps}
+                  class="input input-sm"
+                />
+              </label>
+              <label class="col-span-2 flex items-center justify-between">
+                <span class="text-sm"
+                  >Two-pass Encoding
+                  <span class="text-base-content/50 text-xs">
+                    (requires longer encode time)
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  class="toggle toggle-primary toggle-sm"
+                  bind:checked={encode.settings.twoPass}
+                />
+              </label>
+            {/if}
           {:else if encode.settings.name === "svtAv1"}
             <label class="form-control col-span-2">
               <span class="text-base-content/50 mb-1 text-xs"
@@ -567,19 +667,55 @@
                 class="range range-primary range-xs"
               />
             </label>
-            <label class="form-control col-span-2">
-              <span class="text-base-content/50 mb-1 text-xs"
-                >CRF <span class="font-mono">{encode.settings.crf}</span></span
+            <div class="join col-span-2">
+              <button
+                type="button"
+                class="btn btn-xs join-item"
+                class:btn-primary={encode.settings.targetBitrateKbps == null}
+                onclick={() => (encode.settings.targetBitrateKbps = null)}
               >
-              <input
-                type="range"
-                min="0"
-                max="63"
-                step="1"
-                bind:value={encode.settings.crf}
-                class="range range-primary range-xs"
-              />
-            </label>
+                CRF
+              </button>
+              <button
+                type="button"
+                class="btn btn-xs join-item"
+                class:btn-primary={encode.settings.targetBitrateKbps != null}
+                onclick={() => {
+                  encode.settings.targetBitrateKbps ??= 4000;
+                }}
+              >
+                Bitrate
+              </button>
+            </div>
+            {#if encode.settings.targetBitrateKbps == null}
+              <label class="form-control col-span-2">
+                <span class="text-base-content/50 mb-1 text-xs"
+                  >CRF <span class="font-mono">{encode.settings.crf}</span
+                  ></span
+                >
+                <input
+                  type="range"
+                  min="0"
+                  max="63"
+                  step="1"
+                  bind:value={encode.settings.crf}
+                  class="range range-primary range-xs"
+                />
+              </label>
+            {:else}
+              <label class="form-control col-span-2">
+                <span class="text-base-content/50 mb-1 text-xs"
+                  >Bitrate (kbps)</span
+                >
+                <input
+                  type="number"
+                  min="100"
+                  step="100"
+                  bind:value={encode.settings.targetBitrateKbps}
+                  class="input input-sm"
+                />
+              </label>
+            {/if}
           {:else if encode.settings.name === "h264Videotoolbox" || encode.settings.name === "hevcVideotoolbox"}
             <label class="form-control col-span-2">
               <span class="text-base-content/50 mb-1 text-xs"
@@ -948,7 +1084,7 @@
       >
         {#if encode.commandPreview.length > 0}
           <div
-            class="bg-base-100 border-hairline relative rounded-lg border p-3"
+            class="bg-base-100 border-hairline relative flex flex-col gap-3 rounded-lg border p-3"
           >
             <button
               type="button"
@@ -958,10 +1094,19 @@
             >
               <Copy class="h-3.5 w-3.5" />
             </button>
-            <pre
-              class="font-mono text-xs break-all whitespace-pre-wrap">{encode.commandPreview.join(
-                " ",
-              )}</pre>
+            {#each encode.commandPreview as step, i (i)}
+              {#if encode.commandPreview.length > 1}
+                <span
+                  class="text-base-content/50 text-[10px] font-semibold tracking-wider uppercase"
+                >
+                  Pass {i + 1}
+                </span>
+              {/if}
+              <pre
+                class="font-mono text-xs break-all whitespace-pre-wrap">{step.join(
+                  " ",
+                )}</pre>
+            {/each}
           </div>
         {:else}
           <p class="text-base-content/50 text-sm">

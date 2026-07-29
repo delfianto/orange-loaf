@@ -89,6 +89,7 @@ fn built_in_profiles() -> Vec<Profile> {
                 speed: 10,
                 crf: 30.0,
                 tune: None,
+                target_bitrate_kbps: None,
             }),
             filters: FilterSpec::default(),
             audio_rules: Vec::new(),

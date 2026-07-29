@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::common::{build_prefix, build_suffix};
+use super::common::{build_prefix, build_suffix, build_two_pass_steps};
 use super::{EncodeContext, EncodeStep, EncoderProfile, hdr};
 
 /// x265's "Core" settings — the fields a user tunes for a normal encode.
@@ -9,6 +9,9 @@ use super::{EncodeContext, EncodeStep, EncoderProfile, hdr};
 /// Appendix B for the full ~28-control inventory this is deliberately a
 /// subset of. Static HDR10 (mastering-display/CLL) *is* covered — see
 /// `build_steps`'s use of `ctx.hdr10`.
+///
+/// `target_bitrate_kbps`/`two_pass` follow the exact same contract as
+/// `X264Settings`'s own fields — see its doc comment.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct X265Settings {
@@ -17,6 +20,10 @@ pub struct X265Settings {
     pub profile: Option<String>,
     pub crf: f32,
     pub pix_fmt: String,
+    #[serde(default)]
+    pub target_bitrate_kbps: Option<u32>,
+    #[serde(default)]
+    pub two_pass: bool,
 }
 
 impl Default for X265Settings {
@@ -27,30 +34,34 @@ impl Default for X265Settings {
             profile: None,
             crf: 22.0,
             pix_fmt: "yuv420p10le".to_owned(),
+            target_bitrate_kbps: None,
+            two_pass: false,
         }
     }
 }
 
 impl EncoderProfile for X265Settings {
     fn build_steps(&self, ctx: &EncodeContext) -> Vec<EncodeStep> {
-        let mut args = build_prefix(ctx);
-
-        args.push("-c:v".to_owned());
-        args.push("libx265".to_owned());
-        args.push("-preset:v".to_owned());
-        args.push(self.preset.clone());
+        let mut video_args = vec!["-c:v".to_owned(), "libx265".to_owned()];
+        video_args.push("-preset:v".to_owned());
+        video_args.push(self.preset.clone());
         if let Some(tune) = &self.tune {
-            args.push("-tune:v".to_owned());
-            args.push(tune.clone());
+            video_args.push("-tune:v".to_owned());
+            video_args.push(tune.clone());
         }
         if let Some(profile) = &self.profile {
-            args.push("-profile:v".to_owned());
-            args.push(profile.clone());
+            video_args.push("-profile:v".to_owned());
+            video_args.push(profile.clone());
         }
-        args.push("-crf:v".to_owned());
-        args.push(self.crf.to_string());
-        args.push("-pix_fmt".to_owned());
-        args.push(self.pix_fmt.clone());
+        if let Some(bitrate_kbps) = self.target_bitrate_kbps {
+            video_args.push("-b:v".to_owned());
+            video_args.push(format!("{bitrate_kbps}k"));
+        } else {
+            video_args.push("-crf:v".to_owned());
+            video_args.push(self.crf.to_string());
+        }
+        video_args.push("-pix_fmt".to_owned());
+        video_args.push(self.pix_fmt.clone());
 
         if let Some(hdr10) = &ctx.hdr10 {
             let mut params = vec![
@@ -60,10 +71,16 @@ impl EncoderProfile for X265Settings {
             if let Some(cll) = hdr::content_light_level(hdr10) {
                 params.push(format!("max-cll={cll}"));
             }
-            args.push("-x265-params".to_owned());
-            args.push(params.join(":"));
+            video_args.push("-x265-params".to_owned());
+            video_args.push(params.join(":"));
         }
 
+        if self.target_bitrate_kbps.is_some() && self.two_pass {
+            return build_two_pass_steps(ctx, &video_args);
+        }
+
+        let mut args = build_prefix(ctx);
+        args.extend(video_args);
         args.extend(build_suffix(ctx));
         vec![EncodeStep::Argv(args)]
     }
@@ -260,5 +277,92 @@ mod tests {
             .expect("output should still carry HDR10 metadata");
 
         assert_eq!(output_hdr10, source_hdr10);
+    }
+
+    #[test]
+    fn bitrate_mode_emits_b_v_and_omits_crf() {
+        let settings = X265Settings {
+            target_bitrate_kbps: Some(4000),
+            ..X265Settings::default()
+        };
+        let args = argv(&settings, &EncodeContext::new("in.mkv", "out.mkv"));
+        assert!(args.windows(2).any(|w| w == ["-b:v", "4000k"]));
+        assert!(!args.contains(&"-crf:v".to_owned()));
+    }
+
+    #[test]
+    fn two_pass_only_activates_when_bitrate_mode_is_also_set() {
+        let crf_with_two_pass = X265Settings {
+            two_pass: true,
+            ..X265Settings::default()
+        };
+        let steps = crf_with_two_pass.build_steps(&EncodeContext::new("in.mkv", "out.mkv"));
+        assert_eq!(
+            steps.len(),
+            1,
+            "two_pass alone (still in CRF mode) shouldn't split into two steps"
+        );
+
+        let bitrate_with_two_pass = X265Settings {
+            target_bitrate_kbps: Some(4000),
+            two_pass: true,
+            ..X265Settings::default()
+        };
+        let steps = bitrate_with_two_pass.build_steps(&EncodeContext::new("in.mkv", "out.mkv"));
+        assert_eq!(
+            steps.len(),
+            2,
+            "bitrate mode + two_pass should split into two steps"
+        );
+    }
+
+    /// Same shape as x264's own two-pass real-encode test — see its doc
+    /// comment for why the bitrate check is a wide sanity range, not exact.
+    #[test]
+    #[ignore = "requires system ffmpeg"]
+    #[allow(clippy::cast_precision_loss)]
+    fn real_ffmpeg_two_pass_produces_output_near_the_target_bitrate() {
+        let settings = X265Settings {
+            preset: "ultrafast".to_owned(),
+            target_bitrate_kbps: Some(500),
+            two_pass: true,
+            ..X265Settings::default()
+        };
+        let output = std::env::temp_dir()
+            .join("orangeloaf-x265-two-pass-test.mkv")
+            .display()
+            .to_string();
+        let _ = std::fs::remove_file(&output);
+        let ctx = EncodeContext::new("tests/fixtures/sdr_8bit.mp4", output.clone());
+        let steps = settings.build_steps(&ctx);
+        assert_eq!(steps.len(), 2);
+
+        for step in steps {
+            let EncodeStep::Argv(args) = step;
+            let result = std::process::Command::new("ffmpeg")
+                .args(&args)
+                .output()
+                .expect("failed to run ffmpeg");
+            assert!(
+                result.status.success(),
+                "ffmpeg failed on args {args:?}: {}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        }
+
+        let probed = crate::probe::probe_video(std::path::Path::new("ffprobe"), &output)
+            .expect("probing the two-pass output should succeed");
+        let bitrate_kbps = probed
+            .bitrate_bps
+            .expect("a real encoded file should report a bitrate")
+            as f64
+            / 1000.0;
+        assert!(
+            (100.0..=2000.0).contains(&bitrate_kbps),
+            "expected the 2-pass output's real bitrate to be roughly near \
+             the requested 500kbps target, got {bitrate_kbps}kbps"
+        );
+
+        let _ = std::fs::remove_file(&output);
     }
 }

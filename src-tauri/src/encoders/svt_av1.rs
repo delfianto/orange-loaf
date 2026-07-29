@@ -11,12 +11,21 @@ use super::{EncodeContext, EncodeStep, EncoderProfile, hdr};
 /// field-name/flag-name mismatch inherited from the prior art (see
 /// notes/plan.md §4.3 Appendix A). Naming the Rust field to match the flag
 /// instead would silently relabel what the number actually means.
+///
+/// `target_bitrate_kbps: Some(_)` switches from CRF to single-pass bitrate
+/// mode, same contract as `X264Settings`'s own field — but there's no
+/// `two_pass` here: ffmpeg's generic `-pass` mechanism isn't offered for
+/// SVT-AV1 (unlike x264/x265's long-established `-pass 1`/`-pass 2`
+/// support, SVT-AV1's own 2-pass behavior through that same generic ffmpeg
+/// option isn't reliable enough across versions to build a feature on).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SvtAv1Settings {
     pub speed: u8,
     pub crf: f32,
     pub tune: Option<u8>,
+    #[serde(default)]
+    pub target_bitrate_kbps: Option<u32>,
 }
 
 impl Default for SvtAv1Settings {
@@ -25,6 +34,7 @@ impl Default for SvtAv1Settings {
             speed: 7,
             crf: 24.0,
             tune: None,
+            target_bitrate_kbps: None,
         }
     }
 }
@@ -38,8 +48,13 @@ impl EncoderProfile for SvtAv1Settings {
         // Field is `speed`, flag is `-preset` — see the struct doc comment.
         args.push("-preset".to_owned());
         args.push(self.speed.to_string());
-        args.push("-crf".to_owned());
-        args.push(self.crf.to_string());
+        if let Some(bitrate_kbps) = self.target_bitrate_kbps {
+            args.push("-b:v".to_owned());
+            args.push(format!("{bitrate_kbps}k"));
+        } else {
+            args.push("-crf".to_owned());
+            args.push(self.crf.to_string());
+        }
 
         // Both `tune` and HDR10 ride on the same `-svtav1-params` AVOption —
         // passing it twice would let the second call silently discard the
@@ -102,6 +117,18 @@ mod tests {
         assert!(!args.contains(&"-speed".to_owned()));
     }
 
+    #[test]
+    fn bitrate_mode_emits_b_v_and_omits_crf() {
+        let settings = SvtAv1Settings {
+            target_bitrate_kbps: Some(4000),
+            ..SvtAv1Settings::default()
+        };
+        let steps = settings.build_steps(&EncodeContext::new("in.mkv", "out.mkv"));
+        let EncodeStep::Argv(args) = steps.into_iter().next().unwrap();
+        assert!(args.windows(2).any(|w| w == ["-b:v", "4000k"]));
+        assert!(!args.contains(&"-crf".to_owned()));
+    }
+
     /// Runs the real command against a fixture and checks ffmpeg's own
     /// stderr for SVT-AV1's config summary line, confirming `-preset`/`-crf`
     /// were actually understood as speed 8 / CRF 35 — not just that ffmpeg
@@ -113,6 +140,7 @@ mod tests {
             speed: 8,
             crf: 35.0,
             tune: None,
+            target_bitrate_kbps: None,
         };
         let output = std::env::temp_dir()
             .join("orangeloaf-svtav1-test.mkv")

@@ -246,10 +246,14 @@ fn trimmed_duration(source_duration_secs: f64, trim: &Trim) -> f64 {
     (end - start).max(0.0)
 }
 
-/// Builds the exact command the current settings would run, without
+/// Builds the exact command(s) the current settings would run, without
 /// executing anything — powers the live "Command Preview" section. Reuses
 /// [`EncoderProfile::build_steps`] directly so the preview can never drift
-/// from what `start_encode` actually runs.
+/// from what `start_encode` actually runs. Returns one argv per step
+/// (almost always exactly one; two for a 2-pass bitrate encode) rather
+/// than assuming the first step is the whole story — a 2-pass preview that
+/// silently showed only pass 1's command would be actively misleading,
+/// not just incomplete.
 ///
 /// # Errors
 ///
@@ -271,7 +275,7 @@ pub fn preview_command(
     audio_tracks: Vec<AudioTrackSelection>,
     subtitle_tracks: Vec<SubtitleTrackSelection>,
     video_info: Option<VideoInfo>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<Vec<String>>, String> {
     let (ffmpeg, naming_template) = {
         let config = state.config.lock().expect("config mutex poisoned");
         (
@@ -296,12 +300,13 @@ pub fn preview_command(
     }
     .with_trim(trim);
     let steps = settings.build_steps(&ctx);
-    let EncodeStep::Argv(mut args) = steps
+    Ok(steps
         .into_iter()
-        .next()
-        .ok_or("encoder produced no steps")?;
-    args.insert(0, ffmpeg.display().to_string());
-    Ok(args)
+        .map(|EncodeStep::Argv(mut args)| {
+            args.insert(0, ffmpeg.display().to_string());
+            args
+        })
+        .collect())
 }
 
 /// Returns the current persisted configuration, for the Settings screen.

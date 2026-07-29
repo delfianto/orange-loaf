@@ -43,6 +43,8 @@ interface X265Fields {
   profile: string | null;
   crf: number;
   pixFmt: string;
+  targetBitrateKbps: number | null;
+  twoPass: boolean;
 }
 
 interface X264Fields {
@@ -50,12 +52,15 @@ interface X264Fields {
   tune: string | null;
   profile: string | null;
   crf: number;
+  targetBitrateKbps: number | null;
+  twoPass: boolean;
 }
 
 interface SvtAv1Fields {
   speed: number;
   crf: number;
   tune: number | null;
+  targetBitrateKbps: number | null;
 }
 
 interface VideoToolboxFields {
@@ -92,6 +97,8 @@ export function defaultSettingsFor(name: EncoderName): EncoderSettings {
         profile: null,
         crf: 22,
         pixFmt: "yuv420p10le",
+        targetBitrateKbps: null,
+        twoPass: false,
       };
     case "x264":
       return {
@@ -100,9 +107,17 @@ export function defaultSettingsFor(name: EncoderName): EncoderSettings {
         tune: null,
         profile: null,
         crf: 23,
+        targetBitrateKbps: null,
+        twoPass: false,
       };
     case "svtAv1":
-      return { name: "svtAv1", speed: 7, crf: 24, tune: null };
+      return {
+        name: "svtAv1",
+        speed: 7,
+        crf: 24,
+        tune: null,
+        targetBitrateKbps: null,
+      };
     case "h264Videotoolbox":
       return { name: "h264Videotoolbox", quality: 60 };
     case "hevcVideotoolbox":
@@ -191,7 +206,10 @@ class EncodeState {
   trim: Trim = $state(defaultTrim());
   audioTracks: AudioTrackSelection[] = $state([]);
   subtitleTracks: SubtitleTrackSelection[] = $state([]);
-  commandPreview: string[] = $state([]);
+  /** One argv per encode step — almost always exactly one, except a
+   * 2-pass bitrate encode, which is two (see `preview_command`'s own doc
+   * comment in commands.rs for why this isn't just the first step). */
+  commandPreview: string[][] = $state([]);
   jobId: string | null = $state(null);
   status: EncodeStatus | null = $state(null);
   progress: EncodeProgress | null = $state(null);
@@ -242,7 +260,7 @@ class EncodeState {
       return;
     }
     try {
-      this.commandPreview = await invoke<string[]>("preview_command", {
+      this.commandPreview = await invoke<string[][]>("preview_command", {
         path,
         settings,
         filters,

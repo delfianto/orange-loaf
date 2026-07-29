@@ -198,16 +198,20 @@ impl EncoderKind {
         }
     }
 
-    /// Always `None` today: no encoder in this app has a bitrate-mode
-    /// setting yet (every one of them is CRF/quality-only, per M4's scope)
-    /// — kept as a real per-variant method (matching `preset`/`crf`/
-    /// `pix_fmt`'s call shape) rather than a naming-module constant, so
-    /// it's obviously wrong in one place, not two, the day bitrate mode
-    /// lands on some encoder and this needs to stop being a blanket `None`.
+    /// Bits per second (matching this method's own established unit,
+    /// consumed by the `{bitrate}` naming-template variable) — `None` in
+    /// CRF/quality mode, or for `VideoToolbox`, which has no bitrate-mode
+    /// concept at all. The settings fields themselves are stored in kbps
+    /// (a more natural unit for a UI input), hence the `* 1000.0`.
     #[must_use]
-    #[allow(clippy::unused_self)]
     pub fn target_bitrate(&self) -> Option<f64> {
-        None
+        match self {
+            Self::X265(s) => s.target_bitrate_kbps,
+            Self::X264(s) => s.target_bitrate_kbps,
+            Self::SvtAv1(s) => s.target_bitrate_kbps,
+            Self::H264Videotoolbox(_) | Self::HevcVideotoolbox(_) => None,
+        }
+        .map(|kbps| f64::from(kbps) * 1000.0)
     }
 }
 
@@ -281,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn no_encoder_has_a_target_bitrate_yet() {
+    fn target_bitrate_is_none_in_crf_mode_for_every_encoder() {
         for kind in [
             EncoderKind::X265(X265Settings::default()),
             EncoderKind::X264(X264Settings::default()),
@@ -291,5 +295,32 @@ mod tests {
         ] {
             assert_eq!(kind.target_bitrate(), None);
         }
+    }
+
+    #[test]
+    fn target_bitrate_converts_kbps_to_bps_when_bitrate_mode_is_active() {
+        let x264 = EncoderKind::X264(X264Settings {
+            target_bitrate_kbps: Some(4000),
+            ..X264Settings::default()
+        });
+        assert_eq!(x264.target_bitrate(), Some(4_000_000.0));
+
+        let x265 = EncoderKind::X265(X265Settings {
+            target_bitrate_kbps: Some(8000),
+            ..X265Settings::default()
+        });
+        assert_eq!(x265.target_bitrate(), Some(8_000_000.0));
+
+        let svt = EncoderKind::SvtAv1(SvtAv1Settings {
+            target_bitrate_kbps: Some(2500),
+            ..SvtAv1Settings::default()
+        });
+        assert_eq!(svt.target_bitrate(), Some(2_500_000.0));
+    }
+
+    #[test]
+    fn videotoolbox_target_bitrate_is_always_none_it_has_no_bitrate_mode() {
+        let h264 = EncoderKind::H264Videotoolbox(H264VideoToolboxSettings::default());
+        assert_eq!(h264.target_bitrate(), None);
     }
 }
