@@ -18,6 +18,8 @@
   } from "$lib/stores/encode.svelte";
   import { sanitizeCrop } from "$lib/crop";
   import type { Crop } from "$lib/filters";
+  import { queue } from "$lib/stores/queue.svelte";
+  import { navigation } from "$lib/stores/navigation.svelte";
   import AccordionSection from "$lib/components/AccordionSection.svelte";
   import CropOverlay from "$lib/components/CropOverlay.svelte";
   import TrackRow from "$lib/components/TrackRow.svelte";
@@ -192,6 +194,23 @@
     void encode.start(video.path, video.info.durationSecs, video.info.hdr10);
   }
 
+  async function onAddToQueueClick(): Promise<void> {
+    if (!video.path || !video.info) {
+      return;
+    }
+    await queue.enqueue(
+      video.path,
+      video.info.durationSecs,
+      $state.snapshot(encode.settings),
+      $state.snapshot(encode.filters),
+      $state.snapshot(encode.trim),
+      $state.snapshot(encode.audioTracks),
+      $state.snapshot(encode.subtitleTracks),
+      video.info.hdr10,
+    );
+    navigation.current = "queue";
+  }
+
   function copyCommand(): void {
     void navigator.clipboard.writeText(encode.commandPreview.join(" "));
   }
@@ -247,9 +266,16 @@
         <FolderOpen class="h-4 w-4" />
         {video.path ? "Change Source" : "Choose Source"}
       </button>
-      <button type="button" class="btn btn-ghost btn-sm" disabled={!video.path}
-        >Add to Queue</button
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm"
+        disabled={!video.path}
+        onclick={() => {
+          void onAddToQueueClick();
+        }}
       >
+        Add to Queue
+      </button>
       <button
         type="button"
         class="btn btn-primary btn-sm"

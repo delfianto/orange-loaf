@@ -160,10 +160,15 @@ function selectionFromSubtitleTrack(
   return { index: track.index, enabled: true };
 }
 
+// Mirrors src-tauri/src/job.rs's `EncodeStatus` wire shape exactly, including
+// "cancelled" — unreachable from this direct-encode path today (there's no
+// cancel button here yet), but genuinely reachable once a job runs through
+// the queue (src-tauri/src/queue.rs), which reuses this same event shape.
 export type EncodeStatus =
   | { state: "running" }
   | { state: "completed" }
-  | { state: "failed"; message: string };
+  | { state: "failed"; message: string }
+  | { state: "cancelled" };
 
 export interface EncodeProgress {
   outTimeSecs: number;
@@ -172,7 +177,10 @@ export interface EncodeProgress {
   fps: number | null;
 }
 
-interface EncodeEvent {
+// Exported so `queue.svelte.ts` can listen to the same `encode:event` for
+// whichever job the queue is currently running, instead of redeclaring an
+// identical shape.
+export interface EncodeEvent {
   jobId: string;
   status: EncodeStatus;
   progress: EncodeProgress | null;

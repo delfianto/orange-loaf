@@ -26,8 +26,15 @@ tauri-plugin-dialog = "2.7.2"
 which = "8.0.5"
 directories = "6.0.0"
 base64 = "0.23.0"
-tokio = { version = "1.53.1", features = ["process", "io-util", "rt"] }
+tokio = { version = "1.53.1", features = ["process", "io-util", "rt", "sync", "macros", "time"] }
 uuid = { version = "1.24.0", features = ["v4"] }
+
+[dev-dependencies]
+# Enables tauri::test::mock_app(), and — via #[default_runtime]'s
+# feature-gated codegen — makes plain `AppHandle`/`State` throughout this
+# crate resolve to the mock runtime under `cargo test`, with no generic
+# `<R: Runtime>` parameters needed anywhere in application code.
+tauri = { version = "2", features = ["test"] }
 
 [lints.rust]
 unsafe_code = "forbid"

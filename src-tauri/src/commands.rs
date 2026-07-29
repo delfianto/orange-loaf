@@ -15,7 +15,7 @@ use crate::tools::{self, ToolStatus, detect_tool};
 /// `movie.mp4` -> `movie-voltaic.mkv`. No naming-template system yet (M12) —
 /// this is deliberately the simplest thing that produces a distinct,
 /// predictable output path.
-fn derive_output_path(source: &str) -> Result<String, String> {
+pub(crate) fn derive_output_path(source: &str) -> Result<String, String> {
     let path = Path::new(source);
     let stem = path
         .file_stem()

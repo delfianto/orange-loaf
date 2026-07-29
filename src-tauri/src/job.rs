@@ -3,9 +3,10 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Runtime};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tokio::sync::oneshot;
 
 use crate::encoders::EncodeStep;
 
@@ -22,12 +23,17 @@ pub struct EncodeProgress {
     pub fps: Option<f64>,
 }
 
+/// Both the live event payload's status field *and* (constrained in
+/// practice to every variant except `Running`) `run_cancelable`'s return
+/// value — one enum rather than two nearly-identical ones for "the same
+/// state, plus a transient in-progress marker."
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum EncodeStatus {
     Running,
     Completed,
     Failed { message: String },
+    Cancelled,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -38,7 +44,12 @@ struct EncodeEvent {
     progress: Option<EncodeProgress>,
 }
 
-fn emit(app: &AppHandle, job_id: &str, status: EncodeStatus, progress: Option<EncodeProgress>) {
+fn emit<R: Runtime>(
+    app: &AppHandle<R>,
+    job_id: &str,
+    status: EncodeStatus,
+    progress: Option<EncodeProgress>,
+) {
     // Nothing meaningful to do if the frontend isn't listening (e.g. window
     // closed mid-encode) — the job itself still runs to completion.
     let _ = app.emit(
@@ -51,11 +62,31 @@ fn emit(app: &AppHandle, job_id: &str, status: EncodeStatus, progress: Option<En
     );
 }
 
-/// Drains `stderr` into a bounded tail buffer for failure diagnostics, since
-/// ffmpeg's actual error text (not just its exit code) is what an operator
-/// needs to see — see notes/plan.md §4.12 on the prior art's biggest
-/// diagnosability gap.
-fn spawn_stderr_drain(
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LogEvent {
+    job_id: String,
+    line: String,
+}
+
+fn emit_log<R: Runtime>(app: &AppHandle<R>, job_id: &str, line: &str) {
+    let _ = app.emit(
+        "job:log",
+        LogEvent {
+            job_id: job_id.to_owned(),
+            line: line.to_owned(),
+        },
+    );
+}
+
+/// Drains `stderr` line by line: each line is forwarded live as a `job:log`
+/// event (for the Queue row's log panel, notes/plan.md §2.4) *and*
+/// accumulated into a bounded tail buffer for failure diagnostics — ffmpeg's
+/// actual error text (not just its exit code) is what an operator needs to
+/// see (notes/plan.md §4.12).
+fn spawn_stderr_drain<R: Runtime>(
+    app: AppHandle<R>,
+    job_id: String,
     stderr: tokio::process::ChildStderr,
 ) -> (tokio::task::JoinHandle<()>, Arc<Mutex<String>>) {
     let tail = Arc::new(Mutex::new(String::new()));
@@ -63,6 +94,7 @@ fn spawn_stderr_drain(
     let handle = tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = lines.next_line().await {
+            emit_log(&app, &job_id, &line);
             let mut buf = writer.lock().expect("stderr tail mutex poisoned");
             buf.push_str(&line);
             buf.push('\n');
@@ -105,21 +137,51 @@ fn apply_progress_line(pending: &mut EncodeProgress, duration_secs: f64, line: &
     }
 }
 
-/// Runs an encode job's steps in order on ffmpeg, streaming progress and a
-/// final completion/failure event to the frontend as `encode:event`.
+/// Runs an encode job's steps in order on ffmpeg, streaming progress and log
+/// lines to the frontend as `encode:event`/`job:log`, without exposing any
+/// way to cancel it. Used by the direct (non-queued) Convert-screen encode,
+/// which has no cancel button today — [`run_cancelable`] is the real
+/// implementation this delegates to, with a cancel channel whose sender is
+/// simply never fired.
 ///
 /// # Panics
 ///
 /// Panics if the stderr-tail mutex is poisoned (i.e. the drain task itself
 /// panicked, which would only happen from an allocation failure).
-pub async fn run(
-    app: AppHandle,
+pub async fn run<R: Runtime>(
+    app: AppHandle<R>,
     job_id: String,
     ffmpeg: PathBuf,
     steps: Vec<EncodeStep>,
     duration_secs: f64,
 ) {
+    let (cancel_tx, cancel_rx) = oneshot::channel();
+    // Kept alive for the duration of the encode (dropping it would resolve
+    // `cancel_rx` immediately, falsely "cancelling" the job) but never used.
+    let _cancel_tx = cancel_tx;
+    run_cancelable(app, job_id, ffmpeg, steps, duration_secs, cancel_rx).await;
+}
+
+/// Same as [`run`], but selects on `cancel_rx` alongside reading ffmpeg's
+/// progress output: firing the sender kills the in-flight ffmpeg process and
+/// resolves this call to `EncodeStatus::Cancelled`, immediately, rather than
+/// waiting for it to run to completion. Used by the queue runner, which owns
+/// the paired sender per running job (see `queue::dispatch_next`).
+///
+/// # Panics
+///
+/// Panics if the stderr-tail mutex is poisoned (i.e. the drain task itself
+/// panicked, which would only happen from an allocation failure).
+pub async fn run_cancelable<R: Runtime>(
+    app: AppHandle<R>,
+    job_id: String,
+    ffmpeg: PathBuf,
+    steps: Vec<EncodeStep>,
+    duration_secs: f64,
+    cancel_rx: oneshot::Receiver<()>,
+) -> EncodeStatus {
     emit(&app, &job_id, EncodeStatus::Running, None);
+    tokio::pin!(cancel_rx);
 
     for EncodeStep::Argv(args) in steps {
         let mut child = match Command::new(&ffmpeg)
@@ -130,47 +192,51 @@ pub async fn run(
         {
             Ok(child) => child,
             Err(err) => {
-                emit(
-                    &app,
-                    &job_id,
-                    EncodeStatus::Failed {
-                        message: format!("failed to start ffmpeg: {err}"),
-                    },
-                    None,
-                );
-                return;
+                let status = EncodeStatus::Failed {
+                    message: format!("failed to start ffmpeg: {err}"),
+                };
+                emit(&app, &job_id, status.clone(), None);
+                return status;
             }
         };
 
         let Some(stdout) = child.stdout.take() else {
-            emit(
-                &app,
-                &job_id,
-                EncodeStatus::Failed {
-                    message: "ffmpeg stdout was not piped".to_owned(),
-                },
-                None,
-            );
-            return;
+            let status = EncodeStatus::Failed {
+                message: "ffmpeg stdout was not piped".to_owned(),
+            };
+            emit(&app, &job_id, status.clone(), None);
+            return status;
         };
         let Some(stderr) = child.stderr.take() else {
-            emit(
-                &app,
-                &job_id,
-                EncodeStatus::Failed {
-                    message: "ffmpeg stderr was not piped".to_owned(),
-                },
-                None,
-            );
-            return;
+            let status = EncodeStatus::Failed {
+                message: "ffmpeg stderr was not piped".to_owned(),
+            };
+            emit(&app, &job_id, status.clone(), None);
+            return status;
         };
-        let (stderr_task, stderr_tail) = spawn_stderr_drain(stderr);
+        let (stderr_task, stderr_tail) = spawn_stderr_drain(app.clone(), job_id.clone(), stderr);
 
         let mut lines = BufReader::new(stdout).lines();
         let mut pending = EncodeProgress::default();
-        while let Ok(Some(line)) = lines.next_line().await {
-            if apply_progress_line(&mut pending, duration_secs, &line) {
-                emit(&app, &job_id, EncodeStatus::Running, Some(pending.clone()));
+        loop {
+            tokio::select! {
+                line = lines.next_line() => {
+                    match line {
+                        Ok(Some(line)) => {
+                            if apply_progress_line(&mut pending, duration_secs, &line) {
+                                emit(&app, &job_id, EncodeStatus::Running, Some(pending.clone()));
+                            }
+                        }
+                        _ => break,
+                    }
+                }
+                _ = &mut cancel_rx => {
+                    let _ = child.kill().await;
+                    let _ = stderr_task.await;
+                    let status = EncodeStatus::Cancelled;
+                    emit(&app, &job_id, status.clone(), None);
+                    return status;
+                }
             }
         }
 
@@ -187,12 +253,14 @@ pub async fn run(
                 Ok(status) => format!("ffmpeg exited with {status}\n{tail}"),
                 Err(err) => format!("failed to wait on ffmpeg: {err}\n{tail}"),
             };
-            emit(&app, &job_id, EncodeStatus::Failed { message }, None);
-            return;
+            let status = EncodeStatus::Failed { message };
+            emit(&app, &job_id, status.clone(), None);
+            return status;
         }
     }
 
     emit(&app, &job_id, EncodeStatus::Completed, None);
+    EncodeStatus::Completed
 }
 
 #[cfg(test)]
