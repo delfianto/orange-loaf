@@ -7,3 +7,11 @@ public
 design
 temp
 notes/plan.md
+
+# Tool-managed, not ours to format. `project.inlang` holds paraglide-js's own
+# generated files (.meta.json, README.md, cache/) — gitignored via a *nested*
+# .gitignore that Prettier doesn't read, so `prettier --check .` in CI would
+# otherwise flag them after the compile step regenerates them. `.claude` holds
+# Claude Code's local settings.
+project.inlang
+.claude
