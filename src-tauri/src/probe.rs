@@ -225,10 +225,10 @@ fn guess_bit_depth(
         "gray12le",
     ];
 
-    if let Some(reported) = bits_per_raw_sample.and_then(|raw| raw.parse::<u8>().ok()) {
-        if reported > 0 {
-            return reported;
-        }
+    if let Some(reported) = bits_per_raw_sample.and_then(|raw| raw.parse::<u8>().ok())
+        && reported > 0
+    {
+        return reported;
     }
     if let Some(fmt) = pix_fmt {
         if TWELVE_BIT.contains(&fmt) {

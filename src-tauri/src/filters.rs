@@ -47,13 +47,13 @@ impl FilterSpec {
             stages.push("yadif".to_owned());
         }
 
-        if let Some(crop) = &self.crop {
-            if !crop.is_noop() {
-                stages.push(format!(
-                    "crop=iw-{}-{}:ih-{}-{}:{}:{}",
-                    crop.left, crop.right, crop.top, crop.bottom, crop.left, crop.top
-                ));
-            }
+        if let Some(crop) = &self.crop
+            && !crop.is_noop()
+        {
+            stages.push(format!(
+                "crop=iw-{}-{}:ih-{}-{}:{}:{}",
+                crop.left, crop.right, crop.top, crop.bottom, crop.left, crop.top
+            ));
         }
 
         if self.scale_width.is_some() || self.scale_height.is_some() {

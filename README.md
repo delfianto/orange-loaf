@@ -61,7 +61,7 @@ declines to do this for you" saga.
 ## Prerequisites (things that must exist before joy)
 
 - [Bun](https://bun.sh) 1.3+
-- Rust 1.85+ (edition 2024)
+- Rust 1.97+ (edition 2024)
 - [`just`](https://github.com/casey/just) — optional, recommended, spiritually correct
 - **FFmpeg + FFprobe** on your `PATH` (or point at them in Settings). This is
   the entire engine. Without it, OrangeLoaf is a very handsome window that

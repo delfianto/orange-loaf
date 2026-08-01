@@ -51,15 +51,15 @@ fn resolve_binary(
     configured: Option<&PathBuf>,
     env_override: Option<&Path>,
 ) -> Option<PathBuf> {
-    if let Some(path) = configured {
-        if path.is_file() {
-            return Some(path.clone());
-        }
+    if let Some(path) = configured
+        && path.is_file()
+    {
+        return Some(path.clone());
     }
-    if let Some(path) = env_override {
-        if path.is_file() {
-            return Some(path.to_path_buf());
-        }
+    if let Some(path) = env_override
+        && path.is_file()
+    {
+        return Some(path.to_path_buf());
     }
     which::which(binary_name).ok()
 }

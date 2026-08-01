@@ -934,6 +934,7 @@ mod tests {
             },
         };
         let elapsed = Duration::from_secs(15 * 60 + 32);
+        #[allow(clippy::duration_suboptimal_units)]
         let finished_at = SystemTime::UNIX_EPOCH + Duration::from_secs(1_770_000_000);
         let name = "Movie-FFETIME-FFEEND-FFFSIZE-FFFSMB-FFVIDBIT-FFAUDBIT-FFALLBIT";
         let resolved = resolve_post_encode(name, stats, elapsed, finished_at);

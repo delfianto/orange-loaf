@@ -542,11 +542,11 @@ pub fn move_job(
         "down" => (index + 1 < queue.jobs.len()).then_some(index + 1),
         other => return Err(format!("unknown move direction: {other}")),
     };
-    if let Some(target) = target {
-        if matches!(queue.jobs[target].status, JobStatus::Queued) {
-            queue.jobs.swap(index, target);
-            queue.save()?;
-        }
+    if let Some(target) = target
+        && matches!(queue.jobs[target].status, JobStatus::Queued)
+    {
+        queue.jobs.swap(index, target);
+        queue.save()?;
     }
     Ok(queue.clone())
 }
@@ -642,10 +642,10 @@ fn cancel_job_impl<R: Runtime>(
     };
     if !is_running_job {
         let mut queue = state.queue.lock().expect("queue mutex poisoned");
-        if let Some(job) = queue.jobs.iter_mut().find(|j| j.id == job_id) {
-            if matches!(job.status, JobStatus::Queued) {
-                job.status = JobStatus::Cancelled;
-            }
+        if let Some(job) = queue.jobs.iter_mut().find(|j| j.id == job_id)
+            && matches!(job.status, JobStatus::Queued)
+        {
+            job.status = JobStatus::Cancelled;
         }
         queue.save()?;
     }
