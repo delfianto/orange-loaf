@@ -2303,6 +2303,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.0",
  "directories",
+ "glib",
  "serde",
  "serde_json",
  "tauri",

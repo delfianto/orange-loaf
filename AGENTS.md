@@ -45,23 +45,23 @@ Project was renamed Voltaic → OrangeLoaf. Any leftover `VOLTAIC_*` env var or
 
 Prefer the `just` recipes — they match CI exactly. Run them from the repo root.
 
-| Task | Command |
-| --- | --- |
-| Install deps | `just install` (=`bun install`) |
-| Launch the app (Rust + Vite, hot-reload, port 1420) | `just dev` (=`bun run tauri dev`) |
-| **Everything CI runs, one shot** | `just check` |
-| Frontend typecheck | `just typecheck` (=`bun run typecheck`) |
-| Frontend lint | `just lint` / `just lint-fix` |
-| Frontend format check / write | `just format-check` / `just format` |
-| Frontend unit tests | `just test` (=`vitest run`, no watch) |
-| Rust fmt check / write | `just fmt-check` / `just fmt` |
-| Rust clippy (CI gate) | `just clippy` (=`cargo clippy --all-targets -- -D warnings`) |
-| Rust unit tests | `just test-rust` (=`cargo test`, skips `#[ignore]`d) |
-| Rust integration tests (needs ffmpeg on PATH) | `just test-rust-real` (=`cargo test -- --ignored`) |
-| Production frontend build only | `just build-frontend` (=`bun run build`) |
-| Full release build (Linux installers) | `just build` (=`bun run tauri build`) |
-| Release binary only, no installer (use off-Linux) | `just build-bin` (=`bun run tauri build --no-bundle`) |
-| Clean build artifacts | `just clean` |
+| Task                                                | Command                                                      |
+| --------------------------------------------------- | ------------------------------------------------------------ |
+| Install deps                                        | `just install` (=`bun install`)                              |
+| Launch the app (Rust + Vite, hot-reload, port 1420) | `just dev` (=`bun run tauri dev`)                            |
+| **Everything CI runs, one shot**                    | `just check`                                                 |
+| Frontend typecheck                                  | `just typecheck` (=`bun run typecheck`)                      |
+| Frontend lint                                       | `just lint` / `just lint-fix`                                |
+| Frontend format check / write                       | `just format-check` / `just format`                          |
+| Frontend unit tests                                 | `just test` (=`vitest run`, no watch)                        |
+| Rust fmt check / write                              | `just fmt-check` / `just fmt`                                |
+| Rust clippy (CI gate)                               | `just clippy` (=`cargo clippy --all-targets -- -D warnings`) |
+| Rust unit tests                                     | `just test-rust` (=`cargo test`, skips `#[ignore]`d)         |
+| Rust integration tests (needs ffmpeg on PATH)       | `just test-rust-real` (=`cargo test -- --ignored`)           |
+| Production frontend build only                      | `just build-frontend` (=`bun run build`)                     |
+| Full release build (Linux installers)               | `just build` (=`bun run tauri build`)                        |
+| Release binary only, no installer (use off-Linux)   | `just build-bin` (=`bun run tauri build --no-bundle`)        |
+| Clean build artifacts                               | `just clean`                                                 |
 
 ### Critical command gotchas
 
@@ -179,7 +179,7 @@ If you change anything, run `just check` before considering the work done.
   under edition 2024 (the codebase explicitly avoids it; see the doc comment
   in `queue.rs`).
 - Clippy `pedantic` is warn-by-default; CI runs `cargo clippy --all-targets
-  -- -D warnings`, so any warning fails the build.
+-- -D warnings`, so any warning fails the build.
 - Allowed clippy lints: `module_name_repetitions`, `must_use_candidate`.
 - On `#[tauri::command]` functions, add `#[allow(clippy::needless_pass_by_value)]`
   (Tauri only accepts owned `State<'_, T>`, not `&State`). This is the
@@ -208,7 +208,7 @@ If you change anything, run `just check` before considering the work done.
   with comments like "Extracted from the `#[tauri::command]` wrapper ...
   specifically so tests can call it with a `MockRuntime` handle".)
 - App state: `AppState { Mutex<Config/Queue/Profiles/History>,
-  running_cancel: Mutex<Option<(String, oneshot::Sender<()>)>> }`, managed by
+running_cancel: Mutex<Option<(String, oneshot::Sender<()>)>> }`, managed by
   Tauri. Dev-deps enable `tauri = { features = ["test"] }` so
   `tauri::test::mock_app()` provides a mock runtime — app code stays generic
   over `<R: Runtime>` without test-only generics leaking into production.
@@ -254,7 +254,7 @@ If you change anything, run `just check` before considering the work done.
 ## Comments & docs
 
 - **Do not add comments unless asked** (default code-style rule). When you do,
-  match the existing voice: terse, technical, explains *why* (not *what*).
+  match the existing voice: terse, technical, explains _why_ (not _what_).
 - Rust doc comments use `///` with `# Errors` and `# Panics` sections where
   relevant. Inline references to `notes/plan.md` milestones (e.g.
   "(notes/plan.md M12)") and section numbers are common — keep that style.
@@ -279,7 +279,7 @@ generated `*.d.ts` from style rules.
   `Add Load/Save Queue`, `Rebuild Convert view to match the design mockup`.
 - **No** conventional-commits prefixes (`feat:`/`fix:`/`chore:`).
 - Milestone-prefixed commits reference `notes/plan.md` (e.g. `Add M14:
-  packaging config + CI workflows`). Use this only if your change maps to a
+packaging config + CI workflows`). Use this only if your change maps to a
   milestone.
 - Commit only what you intend; never commit secrets. Don't update git config,
   skip hooks, force-push, or create empty commits unless explicitly asked.
