@@ -26,7 +26,7 @@ Project was renamed Voltaic → OrangeLoaf. Any leftover `VOLTAIC_*` env var or
   Vite 8, Tailwind 4 (CSS-first config in `src/app.css`, **no**
   `tailwind.config.js`), DaisyUI 5 (custom `orangeloaf` theme in `src/app.css`),
   `lucide-svelte` icons, `@fontsource-variable/inter` + `jetbrains-mono`.
-- **Backend:** Rust edition 2024, `rust-version = "1.97"`, Tauri 2
+- **Backend:** Rust edition 2024, `rust-version = "1.98.0"`, Tauri 2
   (+`tauri-plugin-opener`, `tauri-plugin-dialog`), serde/serde_json, tokio,
   uuid v4, `directories`, `which`, `base64`.
 - **i18n:** Paraglide-JS via `@inlang/paraglide-js`, `globalVariable` +
