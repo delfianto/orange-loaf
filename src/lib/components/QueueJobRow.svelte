@@ -287,7 +287,7 @@
         <span class="text-error/80 max-w-xs truncate text-[11px] italic">
           {job.status.message.split("\n")[0]}
         </span>
-      {:else if job.status.state === "cancelled"}
+      {:else}
         <span class="text-base-content/50 text-[11px] italic"> Cancelled </span>
       {/if}
     </span>
