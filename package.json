@@ -1,6 +1,6 @@
 {
   "name": "orange-loaf",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "OrangeLoaf — a desktop video encoder GUI for FFmpeg",
   "type": "module",
   "license": "MIT",
