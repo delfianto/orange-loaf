@@ -19,6 +19,7 @@ permissions:
 
 jobs:
   release:
+    if: ${{ !startsWith(github.event.release.tag_name, 'arch-v') }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
