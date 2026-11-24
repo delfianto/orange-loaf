@@ -274,14 +274,14 @@
         </span>
       {:else if job.status.state === "completed"}
         {#if completedSizeLabel}
-          <span class="text-base-content/50 font-mono text-[11px]"
-            >{completedSizeLabel}</span
-          >
+          <span class="text-base-content/50 font-mono text-[11px]">
+            {completedSizeLabel}
+          </span>
         {/if}
         {#if completedDurationLabel}
-          <span class="text-base-content/50 font-mono text-[11px]"
-            >{completedDurationLabel}</span
-          >
+          <span class="text-base-content/50 font-mono text-[11px]">
+            {completedDurationLabel}
+          </span>
         {/if}
       {:else if job.status.state === "failed"}
         <span class="text-error/80 max-w-xs truncate text-[11px] italic">

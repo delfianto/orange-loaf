@@ -438,13 +438,14 @@
         <div class="flex min-w-0 items-center gap-3">
           <Video class="text-base-content/50 h-5 w-5 shrink-0" />
           <div class="flex min-w-0 flex-col">
-            <span class="truncate text-sm leading-tight font-medium"
-              >{sourceName(video.path)}</span
-            >
+            <span class="truncate text-sm leading-tight font-medium">
+              {sourceName(video.path)}
+            </span>
             <span
               class="text-base-content/50 truncate text-[11px] tracking-wider uppercase"
-              >Source File • {video.path}</span
             >
+              Source File • {video.path}
+            </span>
           </div>
         </div>
         <button
@@ -600,21 +601,25 @@
             <div class="pointer-events-none absolute top-3 left-3 flex gap-2">
               <span
                 class="rounded-sm bg-black/60 px-2 py-1 font-mono text-[10px] text-white/80 backdrop-blur"
-                >{video.info.width} × {video.info.height}</span
               >
+                {video.info.width} × {video.info.height}
+              </span>
               <span
                 class="rounded-sm bg-black/60 px-2 py-1 font-mono text-[10px] text-white/80 uppercase backdrop-blur"
-                >{video.info.codecName}</span
               >
+                {video.info.codecName}
+              </span>
               <span
                 class="rounded-sm bg-black/60 px-2 py-1 font-mono text-[10px] text-white/80 backdrop-blur"
-                >{video.info.bitDepth}-bit</span
               >
+                {video.info.bitDepth}-bit
+              </span>
               {#if video.info.hdr10}
                 <span
                   class="bg-warning/20 text-warning rounded-sm px-2 py-1 font-mono text-[10px] backdrop-blur"
-                  >HDR10</span
                 >
+                  HDR10
+                </span>
               {/if}
             </div>
           {/if}
@@ -647,8 +652,9 @@
         <div class="flex flex-col gap-2">
           <span
             class="text-base-content/50 text-[10px] font-semibold tracking-wider uppercase"
-            >Resolution</span
           >
+            Resolution
+          </span>
           <select
             class="select select-sm w-full"
             value={resolutionSelectValue}
@@ -673,8 +679,9 @@
         <div class="flex flex-col gap-2">
           <span
             class="text-base-content/50 text-[10px] font-semibold tracking-wider uppercase"
-            >Rotate</span
           >
+            Rotate
+          </span>
           <div
             class="border-hairline bg-base-300 flex h-8 overflow-hidden rounded-md border"
           >
@@ -705,8 +712,9 @@
         <div class="flex flex-col gap-2">
           <span
             class="text-base-content/50 text-[10px] font-semibold tracking-wider uppercase"
-            >Flip</span
           >
+            Flip
+          </span>
           <select
             class="select select-sm"
             value={flipValue}
@@ -722,8 +730,9 @@
         <div class="flex flex-col gap-2">
           <span
             class="text-base-content/50 text-[10px] font-semibold tracking-wider uppercase"
-            >Tool</span
           >
+            Tool
+          </span>
           <button
             type="button"
             class="btn btn-sm gap-2"
@@ -776,8 +785,9 @@
               <label class="form-control">
                 <span
                   class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
-                  >Preset</span
                 >
+                  Preset
+                </span>
                 <select
                   class="select select-sm"
                   bind:value={encode.settings.preset}
@@ -790,8 +800,9 @@
               <label class="form-control">
                 <span
                   class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
-                  >Tune</span
                 >
+                  Tune
+                </span>
                 <select
                   class="select select-sm"
                   value={encode.settings.tune ?? ""}
@@ -812,11 +823,12 @@
             <label class="form-control">
               <span
                 class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
-                >Preset (speed)
-                <span class="font-mono normal-case"
-                  >{encode.settings.speed}</span
-                ></span
               >
+                Preset (speed)
+                <span class="font-mono normal-case">
+                  {encode.settings.speed}
+                </span>
+              </span>
               <input
                 type="range"
                 min="0"
@@ -830,11 +842,12 @@
             <label class="form-control">
               <span
                 class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
-                >Quality
-                <span class="font-mono normal-case"
-                  >{encode.settings.quality}</span
-                > (higher is better)</span
               >
+                Quality
+                <span class="font-mono normal-case">
+                  {encode.settings.quality}
+                </span> (higher is better)
+              </span>
               <input
                 type="range"
                 min="0"
@@ -850,8 +863,9 @@
             <label class="form-control">
               <span
                 class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
-                >Bit Depth / Pixel Format</span
               >
+                Bit Depth / Pixel Format
+              </span>
               <select
                 class="select select-sm"
                 bind:value={encode.settings.pixFmt}
@@ -911,13 +925,13 @@
                     <div
                       class="border-hairline flex items-center gap-2 border-x px-4"
                     >
-                      <span class="font-mono text-xs font-medium"
-                        >{encode.settings.crf}</span
-                      >
+                      <span class="font-mono text-xs font-medium">
+                        {encode.settings.crf}
+                      </span>
                       {#if outputHeight != null}
-                        <span class="text-base-content/50 text-[10px]"
-                          >({outputHeight}p)</span
-                        >
+                        <span class="text-base-content/50 text-[10px]">
+                          ({outputHeight}p)
+                        </span>
                       {/if}
                     </div>
                     <button
@@ -940,9 +954,9 @@
                       class="input input-sm w-28 text-right font-mono"
                       bind:value={encode.settings.targetBitrateKbps}
                     />
-                    <span class="text-base-content/50 text-[10px] uppercase"
-                      >kbps</span
-                    >
+                    <span class="text-base-content/50 text-[10px] uppercase">
+                      kbps
+                    </span>
                   </label>
                 {/if}
               </div>
@@ -1100,8 +1114,9 @@
             <div class="flex flex-col gap-2">
               <span
                 class="text-base-content/50 text-[10px] font-semibold tracking-wider uppercase"
-                >Crop (pixels)</span
               >
+                Crop (pixels)
+              </span>
               <div class="grid grid-cols-4 gap-2">
                 <label class="form-control">
                   <span class="text-base-content/50 mb-1 text-xs">Top</span>
@@ -1205,8 +1220,8 @@
               </label>
             </div>
             <label class="mt-3 flex items-center justify-between">
-              <span class="text-sm"
-                >Fast seek
+              <span class="text-sm">
+                Fast seek
                 <span class="text-base-content/50 text-xs">
                   (snaps to the nearest keyframe; faster, less exact)
                 </span>
@@ -1231,8 +1246,9 @@
           {#if video.info?.hdr10}
             <span
               class="border-warning/20 bg-warning/10 text-warning rounded border px-2 py-0.5 text-[10px] font-medium tracking-tight uppercase"
-              >HDR10</span
             >
+              HDR10
+            </span>
           {/if}
         {/snippet}
         <p class="text-base-content/50 text-sm">{HDR_NOTE}</p>

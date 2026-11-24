@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=OrangeLoaf
+Comment=Desktop video encoder for FFmpeg
+Exec=/usr/local/bin/orange-loaf
+Icon=orange-loaf
+Terminal=false
+Categories=AudioVideo;Video;

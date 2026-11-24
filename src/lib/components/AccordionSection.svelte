@@ -38,15 +38,15 @@
       {/if}
       <span class="text-sm font-semibold">{title}</span>
       {#if summary && !open}
-        <span class="text-base-content/50 truncate text-xs font-normal"
-          >{summary}</span
-        >
+        <span class="text-base-content/50 truncate text-xs font-normal">
+          {summary}
+        </span>
       {/if}
     </span>
     {#if headerRight}
-      <span class="flex shrink-0 items-center gap-2"
-        >{@render headerRight()}</span
-      >
+      <span class="flex shrink-0 items-center gap-2">
+        {@render headerRight()}
+      </span>
     {/if}
   </button>
   {#if open}

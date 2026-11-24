@@ -369,9 +369,9 @@
                 />
                 <span class="flex-1 text-sm">{codec.label}</span>
                 {#if codec.lossless}
-                  <span class="badge badge-xs badge-outline"
-                    >{m.settings_lossless()}</span
-                  >
+                  <span class="badge badge-xs badge-outline">
+                    {m.settings_lossless()}
+                  </span>
                 {/if}
               </label>
             {/each}
@@ -391,8 +391,9 @@
               <label class="form-control">
                 <span
                   class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
-                  >Audio languages</span
                 >
+                  Audio languages
+                </span>
                 <input
                   class="input input-sm font-mono"
                   placeholder="e.g. eng, jpn — empty keeps all"
@@ -403,8 +404,9 @@
               <label class="form-control">
                 <span
                   class="text-base-content/50 mb-1.5 text-[10px] font-semibold tracking-wider uppercase"
-                  >Subtitle languages</span
                 >
+                  Subtitle languages
+                </span>
                 <input
                   class="input input-sm font-mono"
                   placeholder="e.g. eng — empty keeps all"

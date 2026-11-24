@@ -40,7 +40,7 @@ design system. The full clean-room notice and architecture writeup live in
 ## 🐧 Linux only (a lifestyle choice)
 
 Packaging and CI produce **Linux** installers only — `.deb`, `.rpm`,
-`.AppImage`. No signed or notarized Windows/macOS builds come out of this
+`.AppImage`, and Arch `.pkg.tar.zst`. No signed or notarized Windows/macOS builds come out of this
 project, because herding code-signing certificates across three operating
 systems is a hobby for people with more serotonin than we currently have.
 
@@ -54,20 +54,34 @@ declines to do this for you" saga.
 - **Backend**: Rust (edition 2024), Tauri 2 — memory-safe, so the only thing
   that panics is you, when an encode dies at 98%.
 - **Frontend**: Svelte 5 (runes), TypeScript 7, Tailwind CSS 4, DaisyUI 5.
-- **Tooling**: Bun, Vite, ESLint 9 (flat config, type-aware, judgmental),
+- **Tooling**: Bun, Vite, ESLint 10 (flat config, type-aware, judgmental),
   Prettier, Clippy on `pedantic` (it has opinions and shares them freely), and
   [`just`](https://github.com/casey/just).
 
 ## Prerequisites (things that must exist before joy)
 
 - [Bun](https://bun.sh) 1.3+
-- Rust 1.97+ (edition 2024)
+- Rust 1.100.0+ (edition 2024)
 - [`just`](https://github.com/casey/just) — optional, recommended, spiritually correct
 - **FFmpeg + FFprobe** on your `PATH` (or point at them in Settings). This is
   the entire engine. Without it, OrangeLoaf is a very handsome window that
   silently judges your video files.
 - Linux packaged build only: `libwebkit2gtk-4.1-dev`, `libappindicator3-dev`,
   `librsvg2-dev`, `patchelf` (matches `.github/workflows/ci.yml`).
+
+## Arch Linux (x86_64)
+
+The package installs `orange-loaf` and a desktop launcher. FFmpeg and FFprobe must be available on your PATH or configured in the app. Executables are installed under `/usr/local/bin`.
+
+Download the `.pkg.tar.zst` from [GitHub Releases](https://github.com/delfianto/orange-loaf/releases/latest)
+and install it with `sudo pacman -U ./<package-file>`, or build the package
+from the checksum-verified release archive with `makepkg -si`:
+
+```sh
+git clone --branch v0.2.0 https://github.com/delfianto/orange-loaf.git
+cd orange-loaf/arch
+makepkg -si
+```
 
 ## Development (`just` do it)
 

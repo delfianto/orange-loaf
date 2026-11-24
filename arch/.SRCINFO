@@ -1,0 +1,26 @@
+pkgbase = orange-loaf-bin
+	pkgdesc = Desktop video encoder for FFmpeg
+	pkgver = 0.2.0
+	pkgrel = 1
+	url = https://github.com/delfianto/orange-loaf
+	arch = x86_64
+	license = MIT
+	depends = glibc
+	depends = libgcc
+	depends = cairo
+	depends = dbus
+	depends = gdk-pixbuf2
+	depends = glib2
+	depends = gtk3
+	depends = hicolor-icon-theme
+	depends = libsoup3
+	depends = webkit2gtk-4.1
+	optdepends = ffmpeg: required for video encoding and probing
+	provides = orange-loaf=0.2.0
+	conflicts = orange-loaf
+	options = !strip
+	options = !debug
+	source = https://github.com/delfianto/orange-loaf/releases/download/v0.2.0/orange-loaf-v0.2.0-linux-x86_64.tar.gz
+	sha256sums = 0c2d5e9a68ba8c3e339a0db000c757e897a5c77b249027971ec5833ad3ddadb4
+
+pkgname = orange-loaf-bin

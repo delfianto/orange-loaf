@@ -1,0 +1,23 @@
+pkgname=orange-loaf-bin
+pkgver=0.2.0
+pkgrel=1
+pkgdesc='Desktop video encoder for FFmpeg'
+arch=('x86_64')
+url='https://github.com/delfianto/orange-loaf'
+license=('MIT')
+depends=('glibc' 'libgcc' 'cairo' 'dbus' 'gdk-pixbuf2' 'glib2' 'gtk3' 'hicolor-icon-theme' 'libsoup3' 'webkit2gtk-4.1')
+optdepends=('ffmpeg: required for video encoding and probing')
+provides=("orange-loaf=$pkgver")
+conflicts=('orange-loaf')
+options=('!strip' '!debug')
+_archive="orange-loaf-v$pkgver-linux-x86_64"
+source=("$url/releases/download/v$pkgver/$_archive.tar.gz")
+sha256sums=('0c2d5e9a68ba8c3e339a0db000c757e897a5c77b249027971ec5833ad3ddadb4')
+
+package() {
+    cd "$srcdir/$_archive"
+    install -Dm0755 orange-loaf "$pkgdir/usr/local/bin/orange-loaf"
+    install -Dm0644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm0644 orange-loaf.desktop "$pkgdir/usr/share/applications/orange-loaf.desktop"
+    install -Dm0644 orange-loaf.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/orange-loaf.png"
+}

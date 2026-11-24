@@ -1,7 +1,6 @@
 name: Release
 
-# Tag-triggered (or manual) rather than on every push, since this builds and
-# uploads a real installer artifact — not something to run on every commit.
+# Attach Tauri installers to the published release.
 #
 # Linux-only, deliberately: Windows/macOS both need real code-signing and,
 # for macOS, notarization to produce installers that don't just get flagged
@@ -12,10 +11,11 @@ name: Release
 # underlying Rust/Tauri code is still fully cross-platform, only this
 # release pipeline isn't.
 on:
-  push:
-    tags:
-      - "v*"
-  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
 
 jobs:
   release:
@@ -48,14 +48,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__
-          releaseName: "OrangeLoaf v__VERSION__"
-          releaseBody: |
-            See the assets below to download and install this version.
-
-            Linux only (.deb/.rpm/.AppImage) — see notes/plan.md M14 for
-            why Windows/macOS builds aren't produced here. Builds are
-            unsigned; the .deb/.rpm/.AppImage formats don't need that to
-            install and run normally on Linux.
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ github.event.release.id }}
