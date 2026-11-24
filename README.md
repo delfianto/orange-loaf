@@ -71,14 +71,14 @@ declines to do this for you" saga.
 
 ## Arch Linux (x86_64)
 
-The package installs `orange-loaf` and a desktop launcher. FFmpeg and FFprobe must be available on your PATH or configured in the app. Executables are installed under `/usr/local/bin`.
+The package installs `orange-loaf` and a desktop launcher. FFmpeg and FFprobe must be available on your PATH or configured in the app. Executables are installed under `/usr/bin`.
 
 Download the `.pkg.tar.zst` from [GitHub Releases](https://github.com/delfianto/orange-loaf/releases/latest)
 and install it with `sudo pacman -U ./<package-file>`, or build the package
 from the checksum-verified release archive with `makepkg -si`:
 
 ```sh
-git clone --branch v0.2.0 https://github.com/delfianto/orange-loaf.git
+git clone --branch v0.2.1 https://github.com/delfianto/orange-loaf.git
 cd orange-loaf/arch
 makepkg -si
 ```
